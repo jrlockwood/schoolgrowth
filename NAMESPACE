@@ -1,0 +1,8 @@
+export(blp, schoolgrowth)
+
+importFrom("stats", "as.formula", "ave", "coef", "cor", "cov", "lm", "na.omit", "sd", "var", "weighted.mean", "fitted", "resid", "model.matrix", "contr.treatment")
+
+importFrom("utils", "object.size", "read.csv")
+
+importFrom("Matrix", "nearPD")
+
