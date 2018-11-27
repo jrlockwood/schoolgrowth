@@ -53,7 +53,7 @@ schoolgrowth <- function(d, target, control = list(), quietly=TRUE){
     }
 
     if(is.null(control$nearPD.keepDiag)){
-        control$nearPD.keepDiag <- TRUE
+        control$nearPD.keepDiag <- FALSE
     }
     
     ## restrict data to schools with at least "school_nmin" total observations
