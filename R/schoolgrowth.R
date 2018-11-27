@@ -4,7 +4,7 @@
 ## TODO:
 ## 1) more data checks and checks on arguments
 ## 2) option to parameterize SigmaX and estimate those parameters
-## 3) add ... argument to pass additional arguments to nearPD
+## 3) add ability to pass additional arguments to nearPD, possibly using ...
 ## 4) maybe allow target to be a vector so that we get BLPs for a vector of outcomes simultaneously
 ## 5) fix global binding warnings in R CMD check
 
@@ -50,6 +50,10 @@ schoolgrowth <- function(d, target, control = list(), quietly=TRUE){
 
     if(is.null(control$SigmaU_nmin)){
         control$SigmaU_nmin <- 0
+    }
+
+    if(is.null(control$nearPD.keepDiag)){
+        control$nearPD.keepDiag <- TRUE
     }
     
     ## restrict data to schools with at least "school_nmin" total observations
@@ -303,17 +307,17 @@ schoolgrowth <- function(d, target, control = list(), quietly=TRUE){
     diag(vU) <- diag(vU)/2
     
     if(any(eigen(vX)$values < control$min_eigenvalue)){
-        m1 <-  nearPD(vX, keepDiag=TRUE, maxit = 2000)
+        m1 <-  nearPD(vX, keepDiag=control$nearPD.keepDiag, maxit = 2000)
         if(!m1$converged){
-            m1 <- nearPD(vX, keepDiag=FALSE, maxit = 2000)
+            stop("nearPD failed for vX; consider changing control$nearPD.keepDiag")
         }
         vX <- as.matrix(m1$mat)
     }
     
     if(any(eigen(vU)$values < control$min_eigenvalue)){
-        m1 <-  nearPD(vU, keepDiag=TRUE, maxit = 2000)
+        m1 <-  nearPD(vU, keepDiag=control$nearPD.keepDiag, maxit = 2000)
         if(!m1$converged){
-            m1 <- nearPD(vU, keepDiag=FALSE, maxit = 2000)
+            stop("nearPD failed for vU; consider changing control$nearPD.keepDiag")
         }
         vU <- as.matrix(m1$mat)
     }
