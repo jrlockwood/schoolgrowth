@@ -6,7 +6,9 @@
 ## 2) option to parameterize SigmaX and estimate those parameters
 ## 3) add ability to pass additional arguments to nearPD, possibly using ...
 ## 4) maybe allow target to be a vector so that we get BLPs for a vector of outcomes simultaneously
-## 5) fix global binding warnings in R CMD check
+## 5) add a way to pass something like dcell back to the function and skip the covariance calculation, so that
+##    we can try different methods of smoothing the resulting matrices without having to re-run everything
+## 6) fix global binding warnings in R CMD check
 
 schoolgrowth <- function(d, target, control = list(), quietly=TRUE){
 
