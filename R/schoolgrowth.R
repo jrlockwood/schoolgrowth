@@ -8,8 +8,11 @@
 ##   -added some elements to return
 ##   -added ... argument that gets passed to nearPD()
 ##   -added arguments SigmaX, SigmaU, N that can be used to bypass variance component calculation
-
-
+##
+## 12/3/2018:
+##   -relaxed requirement that "target" be final year; prints warning if target does not include
+##    final year
+##   -added some more checks while parsing "target"
 
 
 
@@ -133,11 +136,18 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         target["years"] <- "final"
     }
 
-    target["years"] <- gsub(" ","",target["years"])
-    if(target["years"] != "final"){
-        stop("current implementation supports only 'final' target year")
+    if(target["years"] == "final"){
+        w1 <- (dtab$year == max(dtab$year))
+    } else {
+        .years <- as.numeric(unlist(strsplit(target["years"],",")))
+        if(any(is.na(.years)) || !all(.years %in% dtab$year)){
+            stop("'target' specifies years that do not occur in data")
+        }
+        if(!(max(dtab$year) %in% .years)){
+            warning("'target' does not include final year in data - double check that this was intended")
+        }
+        w1 <- dtab$year %in% .years
     }
-    w1 <- (dtab$year == max(dtab$year))
     
     ## subjects:
     if(!any(names(target) == "subjects")){
@@ -148,12 +158,12 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         w2 <- rep(TRUE, nrow(dtab))
     } else {
         .subjects <- gsub(" ","",unlist(strsplit(target["subjects"],",")))
-        if(!all(.subjects %in% dtab$subject)){
+        if(any(is.na(.subjects)) || !all(.subjects %in% dtab$subject)){
             stop("'target' specifies subjects that do not occur in data")
         }
         w2 <- (dtab$subject %in% .subjects)
     }
-        
+    
     ## grades:
     if(!any(names(target) == "grades")){
         target["grades"] <- "all"
@@ -163,7 +173,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         w3 <- rep(TRUE, nrow(dtab))
     } else {
         .grades <- as.numeric(unlist(strsplit(target["grades"],",")))
-        if(!all(.grades %in% dtab$grade)){
+        if(any(is.na(.grades)) || !all(.grades %in% dtab$grade)){
             stop("'target' specifies grades that do not occur in data")
         }
         w3 <- dtab$grade %in% .grades
