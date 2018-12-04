@@ -13,7 +13,9 @@
 ##   -relaxed requirement that "target" be final year; prints warning if target does not include
 ##    final year
 ##   -added some more checks while parsing "target"
-
+##
+## 12/4/2018:
+##   -added some variance components and R^2 for model of G on school FE and cell FE
 
 
 
@@ -277,6 +279,9 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     d$R     <- d$G - d$muhat
     d$Y     <- ave(d$G, d$school, d$cell)
     stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
+    Gmodel  <- c(varG = var(d$G))
+    Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (lenu(d$school) + lenu(d$cell) - 1))
+    Gmodel["Rsq"]  <- 1.0 - (Gmodel["varR"]/Gmodel["varG"])
     ## check (only with small dataset)
     ##
     ## d$Rchk <- resid(lm(G ~ as.factor(school) + cell, data=d))
@@ -497,6 +502,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
                target          = target,
                dcell           = dcell,
                dsch            = dsch,
+               Gmodel          = Gmodel,
                SigmaX.raw      = SigmaX.raw,
                SigmaX          = vX,
                SigmaU.raw      = SigmaU.raw,
