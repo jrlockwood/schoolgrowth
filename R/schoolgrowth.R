@@ -15,11 +15,17 @@
 ##   -added some more checks while parsing "target"
 ##
 ## 12/4/2018:
-##   -added some variance components and R^2 for model of G on school FE and cell FE
+##   -added some variance components and R^2 for model of G
+##   -added option "schoolFE" to control list; defaults to TRUE; if FALSE we do not use school FE
+##   -required each year*grade*subject combination to have at least two schools
 
 
 
 ## TODO:
+## -more validity checks on control parameters
+##
+## -check for connectedness for cells and schools (check model rank?)
+##
 ## -option to parameterize SigmaX and estimate those parameters
 ##
 ## -maybe allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
@@ -70,7 +76,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     }
     
     if(is.null(control$school_nmin)){
-        control$school_nmin <- 10
+        control$school_nmin <- 1
     }
 
     if(is.null(control$min_eigenvalue)){
@@ -88,9 +94,13 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     if(is.null(control$return.N)){
         control$return.N <- FALSE
     }
+
+    if(is.null(control$schoolFE)){
+        control$schoolFE <- TRUE
+    }
     
     ## restrict data to schools with at least "school_nmin" total observations
-    cat("Restricting data to schools with sufficient numbers of students...\n")
+    cat(paste("Restricting data to schools with at least",control$school_nmin,"student(s)...\n"))
     d$n <- ave(rep(1,nrow(d)), d$school, FUN=sum)
     if(!quietly){
         print(c(nrec = nrow(d), nsch = length(unique(d$school))))
@@ -107,6 +117,11 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     K        <- length(allcells)
     K2       <- K*(K+1)/2
 
+    ## make sure there are at least two schools per cell
+    if(min(tapply(d$school, d$cell, function(x){ length(unique(x)) })) < 1.5){
+        stop("Each year*grade*subject combination must have at least two schools")
+    }
+    
     ## check and parse "target"
     ##
     dtab <- expand.grid(unique(d$year), unique(d$grade), unique(d$subject), stringsAsFactors=FALSE)
@@ -253,41 +268,51 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         ## ordered so need to have caveat in help file
     }
 
-
     ## ###################################################################
-    ## shrinkage will be based on residuals controlling for school
-    ## fixed effects and a block of fixed effects for grade*year*subject.
+    ## shrinkage will be based on residuals controlling for a block of fixed effects
+    ## for grade*year*subject, and also school fixed effect if control$schoolFE==TRUE
+    ##
     ## NOTE: we ignore the resulting loss of degrees of freedom in later
     ## calculations.
     ## we get residuals using two-stage regression absorbing schools
     ## ###################################################################
-    cat("Computing residuals...\n")
-    
-    ## drop one column of design matrix to account for fact that fixed effects sum
-    ## to intercept, and "cell" is a partition that also generates an intercept
-    X   <- model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1]
-    for(j in 1:ncol(X)){
-        X[,j] <- X[,j] - ave(X[,j], d$school)
-    }
-    ## "bhat" is cell means, "ahat" is school FE, "muhat" is the fixed effects part
-    ## of the model, "R" is the residuals after accounting for fixed effects, "Y"
-    ## is the aggregate performance measures
-    d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
-    rm(X); gc()
-    d$ahat  <- ave(d$G, d$school) - ave(d$bhat, d$school)
-    d$muhat <- d$ahat + d$bhat
-    d$R     <- d$G - d$muhat
     d$Y     <- ave(d$G, d$school, d$cell)
-    stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
-    Gmodel  <- c(varG = var(d$G))
-    Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (lenu(d$school) + lenu(d$cell) - 1))
-    Gmodel["Rsq"]  <- 1.0 - (Gmodel["varR"]/Gmodel["varG"])
-    ## check (only with small dataset)
-    ##
-    ## d$Rchk <- resid(lm(G ~ as.factor(school) + cell, data=d))
-    ## stopifnot(max(abs(d$R - d$Rchk)) < 1e-6)
-    ## d$Rchk <- NULL
+    Gmodel  <- c(varG = var(d$G))    
+    
+    cat("Computing residuals...\n")
 
+    if(control$schoolFE){
+        ## drop one column of design matrix to account for fact that fixed effects sum
+        ## to intercept, and "cell" is a partition that also generates an intercept
+        X   <- model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1]
+        for(j in 1:ncol(X)){
+            X[,j] <- X[,j] - ave(X[,j], d$school)
+        }
+        ## "bhat" is cell means, "muhat" is the fixed effects part
+        ## of the model, "R" is the residuals after accounting for fixed effects, "Y"
+        ## is the aggregate performance measures
+        d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
+        rm(X); gc()
+        d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
+        d$R     <- d$G - d$muhat
+        stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
+        Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school)) + length(unique(d$cell)) - 1))
+        d$bhat <- NULL
+        ## check (only with small dataset)
+        ##
+        ## d$Rchk <- resid(lm(G ~ as.factor(school) + cell, data=d))
+        ## stopifnot(max(abs(d$R - d$Rchk)) < 1e-6)
+        ## d$Rchk <- NULL
+    } else {
+        d$muhat <- as.vector(fitted(lm(G ~ cell, data=d)))
+        ## to avoiding numerical inaccuracies affecting unique() later:        
+        d$muhat <- ave(d$muhat, d$cell) 
+        d$R     <- d$G - d$muhat
+        Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$cell))))
+    }
+    
+    Gmodel["Rsq"]  <- 1.0 - (Gmodel["varR"]/Gmodel["varG"])
+    
     ## #######################################
     ## estimate "noise" and "signal" variance components using method-of-moments
     ## #######################################
@@ -463,6 +488,9 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     cat("Computing smoothed school measures...\n")
     d$n    <- ave(rep(1,nrow(d)), d$school, d$cell, FUN=sum)
     dsch   <- unique(d[,c("school","grade","year","subject","cell","n","muhat","Y")])
+    if(nrow(dsch) != nrow(unique(d[,c("school","grade","year","subject","cell")]))){
+        stop("problem computing dsch")
+    }
     
     blpit <- function(x){
         ## get matrix of counts for this school
