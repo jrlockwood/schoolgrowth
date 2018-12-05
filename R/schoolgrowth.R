@@ -377,7 +377,12 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
                     mj <- t(sapply(rvalsj[sboth], function(x){ c(mean(x), length(x)) }))
                     
                     ## compute provisional value of dcell$vX[wh], which may be adjusted later for shared students
-                    dcell$vX[wh] <- cov(mi[,1], mj[,1])
+                    ## NOTE: if there is only one school, set covariance to 0
+                    if(nrow(mi) > 1){
+                        dcell$vX[wh] <- cov(mi[,1], mj[,1])
+                    } else {
+                        dcell$vX[wh] <- 0.0
+                    }
                     
                     ## now merge values for same student and restrict
                     tmp <- subset(na.omit(merge(tmpi, tmpj, by="stuid")), school.x == school.y)
