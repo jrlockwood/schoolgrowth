@@ -18,11 +18,15 @@
 ##   -added some variance components and R^2 for model of G
 ##   -added option "schoolFE" to control list; defaults to TRUE; if FALSE we do not use school FE
 ##   -required each year*grade*subject combination to have at least two schools
+##
+## 12/5/2018:
+##   -more checks on input field formats plus coercion to character
+##   -return "dtab"
 
 
 
 ## TODO:
-## -more validity checks on control parameters
+## -more validity checks on control parameters and/or input data
 ##
 ## -check for connectedness for cells and schools (check model rank?)
 ##
@@ -36,29 +40,38 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
 
     ## basic argument checks
     reqnames <- c("stuid","school","grade","year","subject","G")
+
+    if(!is.data.frame(d)){
+        stop("data 'd' must be a data frame")
+    }
+    
     if(!all(reqnames %in% names(d))){
         stop("data 'd' does not contain all required variables")
-    }
-    if( !(nrow(na.omit(d[,reqnames])) == nrow(d)) ){
-        stop("data 'd' has missing values in required variables")
-    }
-
-    if(!is.numeric(d$grade)){
-        stop("'grade' variable in 'd' must be numeric")
-    }
-
-    if(!is.numeric(d$year)){
-        stop("'year' variable in 'd' must be numeric")
-    }
-
-    if(!is.character(d$subject)){
-        stop("'subject' variable in 'd' must be character")
     }
 
     if(!is.numeric(d$G)){
         stop("'G' variable in 'd' must be numeric")
     }
+    
+    ## get "final" year:
+    if(any(is.na(as.numeric(d$year)))){
+        stop("variable 'year' cannot be coerced to numeric without introducing missing values")
+    }
+    .finalyear <- as.character(d$year[which.max(as.numeric(d$year))])
 
+    ## coercion to character, exiting if this creates missing values, or if there were
+    ## missing values to begin with
+    for(v in c("stuid","school","grade","year","subject")){
+        if(!is.character(d[,v])){
+            d[,v] <- as.character(d[,v])
+            cat(paste("NOTE: variable '",v,"' in 'd' coerced to character.\n",sep=""))
+        }
+    }
+    
+    if( !(nrow(na.omit(d[,reqnames])) == nrow(d)) ){
+        stop("data 'd' has missing values in required variables")
+    }
+    
     ## SigmaX/SigmaU/N - more detailed checks later if these are not NULL
     tmp <- is.null(SigmaX) + is.null(SigmaU) + is.null(N)
     if(!(tmp %in% c(0,3))){
@@ -154,14 +167,11 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     }
 
     if(target["years"] == "final"){
-        w1 <- (dtab$year == max(dtab$year))
+        w1 <- (dtab$year == .finalyear)
     } else {
-        .years <- as.numeric(unlist(strsplit(target["years"],",")))
+        .years <- gsub(" ","", unlist(strsplit(target["years"],",")))
         if(any(is.na(.years)) || !all(.years %in% dtab$year)){
             stop("'target' specifies years that do not occur in data")
-        }
-        if(!(max(dtab$year) %in% .years)){
-            warning("'target' does not include final year in data - double check that this was intended")
         }
         w1 <- dtab$year %in% .years
     }
@@ -174,7 +184,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     if(target["subjects"] == "all"){
         w2 <- rep(TRUE, nrow(dtab))
     } else {
-        .subjects <- gsub(" ","",unlist(strsplit(target["subjects"],",")))
+        .subjects <- gsub(" ","", unlist(strsplit(target["subjects"],",")))
         if(any(is.na(.subjects)) || !all(.subjects %in% dtab$subject)){
             stop("'target' specifies subjects that do not occur in data")
         }
@@ -189,7 +199,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     if(target["grades"] == "all"){
         w3 <- rep(TRUE, nrow(dtab))
     } else {
-        .grades <- as.numeric(unlist(strsplit(target["grades"],",")))
+        .grades <- gsub(" ","", unlist(strsplit(target["grades"],",")))
         if(any(is.na(.grades)) || !all(.grades %in% dtab$grade)){
             stop("'target' specifies grades that do not occur in data")
         }
@@ -533,6 +543,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     ## ####################
     .r <- list(control         = control,
                target          = target,
+               dtab            = dtab,
                dcell           = dcell,
                dsch            = dsch,
                Gmodel          = Gmodel,
@@ -542,10 +553,9 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
                SigmaU          = vU,
                N               = NULL,
                target_cells    = target_cells,
-               adjusted_growth = b)    
+               adjusted_growth = b)
     if(control$return.N){
         .r$N <- N
     }
     return(.r)
 }
-
