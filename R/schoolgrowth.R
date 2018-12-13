@@ -22,6 +22,11 @@
 ## 12/5/2018:
 ##   -more checks on input field formats plus coercion to character
 ##   -return "dtab"
+##
+## 12/12/2018:
+##   -added option "target_contrast" that gets negative weights, to allow estimation of contrasts
+
+
 
 
 
@@ -36,7 +41,7 @@
 ##
 ## -fix global binding warnings in R CMD check
 
-schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, SigmaX = NULL, SigmaU = NULL, N = NULL, ...){
+schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), quietly=TRUE, SigmaX = NULL, SigmaU = NULL, N = NULL, ...){
 
     ## basic argument checks
     reqnames <- c("stuid","school","grade","year","subject","G")
@@ -112,7 +117,7 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         control$schoolFE <- TRUE
     }
     
-    ## restrict data to schools with at least "school_nmin" total observations
+    ## restrict data to schools with at least "control$school_nmin" total observations
     cat(paste("Restricting data to schools with at least",control$school_nmin,"student(s)...\n"))
     d$n <- ave(rep(1,nrow(d)), d$school, FUN=sum)
     if(!quietly){
@@ -135,8 +140,9 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         stop("Each year*grade*subject combination must have at least two schools")
     }
     
-    ## check and parse "target"
-    ##
+    #################
+    ## parse "target"
+    #################    
     dtab <- expand.grid(unique(d$year), unique(d$grade), unique(d$subject), stringsAsFactors=FALSE)
     names(dtab) <- c("year","grade","subject")
     dtab$cell <- paste("t",dtab$year,"_g",dtab$grade,"_b",dtab$subject,sep="")
@@ -220,6 +226,62 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         stop("'target' implies no contributing cells")
     }
     target_cells <- dtab$cell[dtab$intarget]
+
+    #################
+    ## parse "target_contrast"
+    #################
+    target_contrast_cells <- NULL
+    
+    if(!is.null(target_contrast)){
+        
+        if(!is.character(target_contrast) || is.null(names(target_contrast)) || (length(target_contrast) != 4)){
+            stop("'target_contrast' must be a named character vector of length 4")
+        }
+        
+        if(!all(sort(names(target_contrast)) == c("grades","subjects","weights","years"))){
+            stop("invalid names of 'target_contrast'; names must be 'years','subjects','grades','weights'")
+        }
+    
+        ## years:
+        .years <- gsub(" ","", unlist(strsplit(target_contrast["years"],",")))
+        if(any(is.na(.years)) || !all(.years %in% dtab$year)){
+            stop("'target_contrast' specifies years that do not occur in data")
+        }
+        w1 <- dtab$year %in% .years
+    
+        ## subjects:
+        if(target_contrast["subjects"] == "all"){
+            w2 <- rep(TRUE, nrow(dtab))
+        } else {
+            .subjects <- gsub(" ","", unlist(strsplit(target_contrast["subjects"],",")))
+            if(any(is.na(.subjects)) || !all(.subjects %in% dtab$subject)){
+                stop("'target_contrast' specifies subjects that do not occur in data")
+            }
+            w2 <- (dtab$subject %in% .subjects)
+        }
+    
+        ## grades:
+        if(target_contrast["grades"] == "all"){
+            w3 <- rep(TRUE, nrow(dtab))
+        } else {
+            .grades <- gsub(" ","", unlist(strsplit(target_contrast["grades"],",")))
+            if(any(is.na(.grades)) || !all(.grades %in% dtab$grade)){
+                stop("'target_contrast' specifies grades that do not occur in data")
+            }
+            w3 <- dtab$grade %in% .grades
+        }
+
+        ## weights:
+        if(!(target_contrast["weights"] %in% c("n","equal"))){
+            stop("'target_contrast' weights must be 'n' or 'equal'")
+        }
+
+        dtab$intarget_contrast <- w1 & w2 & w3
+        if(sum(dtab$intarget_contrast) < 1){
+            stop("'target_contrast' implies no contributing cells")
+        }
+        target_contrast_cells <- dtab$cell[dtab$intarget_contrast]
+    }
     
     ## #################################################################
     ## create "dcell" dataframe that tracks cell pairs and associated data
@@ -516,7 +578,13 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
         diag(Ns) <- diag(Ns)/2
 
         ## proceed if the school has measures for the target cells
-        if(any(x$cell %in% target_cells)){
+        ## (and if needed, target_contrast cells)
+        validschool <- any(x$cell %in% target_cells)
+        if(!is.null(target_contrast)){
+            validschool <- validschool && any(x$cell %in% target_contrast_cells)
+        }
+        
+        if(validschool){
             Ns  <- Ns[x$cell, x$cell, drop=F]
             stopifnot(all(diag(Ns) == x$n))
             Ntilde <- Ns / (diag(Ns) %*% t(diag(Ns)))
@@ -526,14 +594,27 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
             
             lambda <- rep(0, nrow(x))
             wh     <- which(x$cell %in% target_cells)
+            ntot   <- sum(x$n[wh])
             if(target["weights"]=="n"){
-                lambda[wh] <- x$n[wh] / sum(x$n[wh])
+                lambda[wh] <- x$n[wh] / ntot
             } else {
                 lambda[wh] <- 1/length(wh)
             }
+
+            ncontrast <- 0
+            if(!is.null(target_contrast)){
+                whc       <- which(x$cell %in% target_contrast_cells)
+                ncontrast <- sum(x$n[whc])
+                if(target_contrast["weights"]=="n"){
+                    lambda[whc] <- -1.0 * (x$n[whc] / ncontrast)
+                } else {
+                    lambda[whc] <- -1.0 / length(whc)
+                }
+            }
             
             tmp <- blp(x$Y, lambda, x$muhat, vXs, vUs, etol = control$min_eigenvalue)
-            return(data.frame(school = x$school[1], ntot = sum(x$n[wh]), as.data.frame(as.list(tmp)), stringsAsFactors=FALSE))
+            
+            return(data.frame(school = x$school[1], ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp)), stringsAsFactors=FALSE))
         }
     }
     b <- do.call("rbind",lapply( split(dsch, dsch$school), blpit))
@@ -541,19 +622,21 @@ schoolgrowth <- function(d, target = NULL, control = list(), quietly=TRUE, Sigma
     ## ####################
     ## RETURN
     ## ####################
-    .r <- list(control         = control,
-               target          = target,
-               dtab            = dtab,
-               dcell           = dcell,
-               dsch            = dsch,
-               Gmodel          = Gmodel,
-               SigmaX.raw      = SigmaX.raw,
-               SigmaX          = vX,
-               SigmaU.raw      = SigmaU.raw,
-               SigmaU          = vU,
-               N               = NULL,
-               target_cells    = target_cells,
-               adjusted_growth = b)
+    .r <- list(control               = control,
+               target                = target,
+               target_contrast       = target_contrast,
+               dtab                  = dtab,
+               dcell                 = dcell,
+               dsch                  = dsch,
+               Gmodel                = Gmodel,
+               SigmaX.raw            = SigmaX.raw,
+               SigmaX                = vX,
+               SigmaU.raw            = SigmaU.raw,
+               SigmaU                = vU,
+               N                     = NULL,
+               target_cells          = target_cells,
+               target_contrast_cells = target_contrast_cells,
+               adjusted_growth       = b)
     if(control$return.N){
         .r$N <- N
     }
