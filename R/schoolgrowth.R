@@ -25,7 +25,10 @@
 ##
 ## 12/12/2018:
 ##   -added option "target_contrast" that gets negative weights, to allow estimation of contrasts
-
+##
+## 01/04/2019:
+##   -some fixes so that function will still work, and produce BLP, when the number of cells is
+##    only 1 or 2.  also changed syntax of rm() after computing variance component estimates
 
 
 
@@ -346,44 +349,64 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ##
     ## NOTE: we ignore the resulting loss of degrees of freedom in later
     ## calculations.
-    ## we get residuals using two-stage regression absorbing schools
+    ## we get residuals using two-stage regression absorbing schools if control$schoolFE==TRUE
     ## ###################################################################
     d$Y     <- ave(d$G, d$school, d$cell)
     Gmodel  <- c(varG = var(d$G))    
     
     cat("Computing residuals...\n")
 
-    if(control$schoolFE){
-        ## drop one column of design matrix to account for fact that fixed effects sum
-        ## to intercept, and "cell" is a partition that also generates an intercept
-        X   <- model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1]
-        for(j in 1:ncol(X)){
-            X[,j] <- X[,j] - ave(X[,j], d$school)
+    if(K > 1){ ## there is more than one cell:
+        if(control$schoolFE){
+            ## drop one column of design matrix to account for fact that fixed effects sum
+            ## to intercept, and "cell" is a partition that also generates an intercept
+            X   <- model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]
+            for(j in 1:ncol(X)){
+                X[,j] <- X[,j] - ave(X[,j], d$school)
+            }
+            ## "bhat" is cell means, "muhat" is the fixed effects part
+            ## of the model, "R" is the residuals after accounting for fixed effects, "Y"
+            ## is the aggregate performance measures
+            d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
+            rm(X); gc()
+            d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
+            d$R     <- d$G - d$muhat
+            stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
+            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school)) + length(unique(d$cell)) - 1))
+            d$bhat <- NULL
+            ## check (only with small dataset)
+            ##
+            ## d$Rchk <- resid(lm(G ~ as.factor(school) + cell, data=d))
+            ## stopifnot(max(abs(d$R - d$Rchk)) < 1e-6)
+            ## d$Rchk <- NULL
+        } else {
+            d$muhat <- as.vector(fitted(lm(G ~ cell, data=d)))
+            ## to avoiding numerical inaccuracies affecting unique() later:        
+            d$muhat <- ave(d$muhat, d$cell) 
+            d$R     <- d$G - d$muhat
+            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$cell))))
         }
-        ## "bhat" is cell means, "muhat" is the fixed effects part
-        ## of the model, "R" is the residuals after accounting for fixed effects, "Y"
-        ## is the aggregate performance measures
-        d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
-        rm(X); gc()
-        d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
-        d$R     <- d$G - d$muhat
-        stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
-        Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school)) + length(unique(d$cell)) - 1))
-        d$bhat <- NULL
-        ## check (only with small dataset)
-        ##
-        ## d$Rchk <- resid(lm(G ~ as.factor(school) + cell, data=d))
-        ## stopifnot(max(abs(d$R - d$Rchk)) < 1e-6)
-        ## d$Rchk <- NULL
-    } else {
-        d$muhat <- as.vector(fitted(lm(G ~ cell, data=d)))
-        ## to avoiding numerical inaccuracies affecting unique() later:        
-        d$muhat <- ave(d$muhat, d$cell) 
-        d$R     <- d$G - d$muhat
-        Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$cell))))
+    } else{ ## there is only one cell:
+        if(control$schoolFE){
+            d$muhat <- ave(d$G, d$school)
+            d$R     <- d$G - d$muhat
+            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school))))
+        } else {
+            d$muhat <- mean(d$G)
+            d$R     <- d$G - d$muhat
+            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - 1)
+        }
     }
     
     Gmodel["Rsq"]  <- 1.0 - (Gmodel["varR"]/Gmodel["varG"])
+
+    ## if there is only one cell and we use schoolFE, then the machinery breaks down
+    ## because the signal variance for the cells is 0 by definition.  we could continue
+    ## the code and try to make exceptions but I think it makes more sense to stop and
+    ## throw an error here
+    if( (K==1) && control$schoolFE){
+        stop("Function cannot use school fixed effects with only a single cell in the data; re-run with control$schoolFE=FALSE")
+    }
     
     ## #######################################
     ## estimate "noise" and "signal" variance components using method-of-moments
@@ -490,8 +513,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
         }
 
-        rm(tmp, tmpi, tmpj, rvals, rvals2, rvalsi, rvalsj, ci, cj, mi, mj, sboth, counts, i, j); gc()
-    
+        rm(list = intersect(ls(), c("tmp","tmpi","tmpj","rvals","rvals2","rvalsi","rvalsj","ci","cj","mi","mj","sboth","counts","i","j")))
+        gc()
+        
         ## ######################################
         ## build, check, adjust covariance matrices.
         ## try to keep diagonals; if that fails, relax diagonals
@@ -516,6 +540,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 stop("nearPD failed for vX; consider changing control$nearPD.keepDiag")
             }
             vX <- as.matrix(m1$mat)
+            rm(m1); gc()
         }
         
         if(any(eigen(vU)$values < control$min_eigenvalue)){
@@ -524,8 +549,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 stop("nearPD failed for vU; consider changing control$nearPD.keepDiag")
             }
             vU <- as.matrix(m1$mat)
+            rm(m1); gc()
         }
-        rm(m1); gc()
     } else {
         cat("Bypassing estimating variance components...\n")
 
