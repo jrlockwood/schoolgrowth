@@ -29,6 +29,11 @@
 ## 01/04/2019:
 ##   -some fixes so that function will still work, and produce BLP, when the number of cells is
 ##    only 1 or 2.  also changed syntax of rm() after computing variance component estimates
+##
+## 01/08/2019:
+##   -some changes to residual calculations to try to reduce RAM footprint, including using
+##    Matrix:::sparse.model.matrix to get the fitted values from the two levels of fixed effects
+
 
 
 
@@ -141,6 +146,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## make sure there are at least two schools per cell
     if(min(tapply(d$school, d$cell, function(x){ length(unique(x)) })) < 1.5){
         stop("Each year*grade*subject combination must have at least two schools")
+    }
+
+    ## if there is only one cell and we use schoolFE, then the machinery breaks down
+    ## because the signal variance for the cells is 0 by definition.  we could continue
+    ## the code and try to make exceptions but I think it makes more sense to stop and
+    ## throw an error here
+    if( (K==1) && control$schoolFE){
+        stop("Function cannot use school fixed effects with only a single cell in the data; re-run with control$schoolFE=FALSE")
     }
     
     #################
@@ -360,53 +373,41 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(control$schoolFE){
             ## drop one column of design matrix to account for fact that fixed effects sum
             ## to intercept, and "cell" is a partition that also generates an intercept
-            X   <- model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]
-            for(j in 1:ncol(X)){
-                X[,j] <- X[,j] - ave(X[,j], d$school)
-            }
+            ##
+            ## X   <- model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]
+            ## for(j in 1:ncol(X)){
+            ##    X[,j] <- X[,j] - ave(X[,j], d$school)
+            ## }
             ## "bhat" is cell means, "muhat" is the fixed effects part
-            ## of the model, "R" is the residuals after accounting for fixed effects, "Y"
-            ## is the aggregate performance measures
-            d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
+            ## of the model, "R" are the residuals after accounting for fixed effects,
+            ## "Y" are the aggregate performance measures (computed above)
+            ## d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
+            ## d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
+            ## d$bhat <- NULL
+            X       <- sparse.model.matrix(~school + cell -1, data=d)
+            d$muhat <- as.vector(X %*% (solve(crossprod(X), crossprod(X, d$G))))
             rm(X); gc()
-            d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
             d$R     <- d$G - d$muhat
             stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
             Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school)) + length(unique(d$cell)) - 1))
-            d$bhat <- NULL
             ## check (only with small dataset)
             ##
-            ## d$Rchk <- resid(lm(G ~ as.factor(school) + cell, data=d))
-            ## stopifnot(max(abs(d$R - d$Rchk)) < 1e-6)
-            ## d$Rchk <- NULL
+            ## cat("CHECKING MATRIX CALCS")
+            ## d$muhat_chk <- fitted(lm(G ~ as.factor(school) + cell, data=d))
+            ## print(max(abs(d$muhat - d$muhat_chk)))
+            ## d$muhat_chk <- NULL
         } else {
-            d$muhat <- as.vector(fitted(lm(G ~ cell, data=d)))
-            ## to avoiding numerical inaccuracies affecting unique() later:        
-            d$muhat <- ave(d$muhat, d$cell) 
+            d$muhat <- ave(d$G, d$cell)
             d$R     <- d$G - d$muhat
             Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$cell))))
         }
-    } else{ ## there is only one cell:
-        if(control$schoolFE){
-            d$muhat <- ave(d$G, d$school)
-            d$R     <- d$G - d$muhat
-            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school))))
-        } else {
-            d$muhat <- mean(d$G)
-            d$R     <- d$G - d$muhat
-            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - 1)
-        }
+    } else{ ## there is only one cell, in which case control$schoolFE must be FALSE.
+        d$muhat <- mean(d$G)
+        d$R     <- d$G - d$muhat
+        Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - 1)
     }
     
     Gmodel["Rsq"]  <- 1.0 - (Gmodel["varR"]/Gmodel["varG"])
-
-    ## if there is only one cell and we use schoolFE, then the machinery breaks down
-    ## because the signal variance for the cells is 0 by definition.  we could continue
-    ## the code and try to make exceptions but I think it makes more sense to stop and
-    ## throw an error here
-    if( (K==1) && control$schoolFE){
-        stop("Function cannot use school fixed effects with only a single cell in the data; re-run with control$schoolFE=FALSE")
-    }
     
     ## #######################################
     ## estimate "noise" and "signal" variance components using method-of-moments
