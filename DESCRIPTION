@@ -1,9 +1,10 @@
 Package: schoolgrowth
 Type: Package
 Title: Functions for Smoothing School-Level Growth Measures
-Version: 0.1-10
-Date: 2019-01-08
-Depends: R (>= 3.1.0), stats, Matrix
+Version: 0.1-12
+Date: 2019-01-09
+Depends: R (>= 3.1.0), Matrix
+Imports: stats
 Author: J.R. Lockwood
 Maintainer: J.R. Lockwood <jrlockwood@ets.org>
 Description: This contains functions for smoothing school-level growth measures across years, grades and/or subjects.

@@ -384,11 +384,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
             ## d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
             ## d$bhat <- NULL
-            X       <- sparse.model.matrix(~school + cell -1, data=d)
-            d$muhat <- as.vector(X %*% (solve(crossprod(X), crossprod(X, d$G))))
-            rm(X); gc()
+            .X      <- sparse.model.matrix(~school + cell -1, data=d)
+            .xpx    <- crossprod(.X)
+            .xpy    <- crossprod(.X, d$G)
+            .bhat   <- solve(.xpx, .xpy)
+            d$muhat <- as.vector(.X %*% .bhat)
+            rm(.X,.xpx,.xpy,.bhat); gc()
             d$R     <- d$G - d$muhat
-            stopifnot(max(abs( (d$Y - d$muhat) - ave(d$R, d$school, d$cell))) < 1e-10)
+            if(max(abs(c(tapply(d$R, d$school, mean), tapply(d$R, d$cell, mean)))) > 1e-8){
+                stop("Error in computing residuals; not orthogonal to design matrix")
+            }
             Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school)) + length(unique(d$cell)) - 1))
             ## check (only with small dataset)
             ##

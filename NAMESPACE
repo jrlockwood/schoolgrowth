@@ -1,6 +1,5 @@
 export(blp, schoolgrowth)
 
-importFrom("stats", "as.formula", "ave", "coef", "cor", "cov", "lm", "na.omit", "sd", "var", "weighted.mean", "fitted", "resid", "model.matrix", "contr.treatment")
+importFrom("stats", "ave", "cov", "na.omit", "var", "weighted.mean")
 
-importFrom("Matrix", "nearPD", "sparse.model.matrix")
-
+import("Matrix")
