@@ -36,6 +36,7 @@
 ##
 ## 01/11/2019:
 ##   -updated blp() to return weights, and modified schoolgrowth() to track weights and return them
+##   -changed NAMESPACE and DESCRIPTION so that Matrix library is not loaded
 
 
 

@@ -2,4 +2,7 @@ export(blp, schoolgrowth)
 
 importFrom("stats", "ave", "cov", "na.omit", "var", "weighted.mean")
 
-import("Matrix")
+importFrom("Matrix", "sparse.model.matrix", "nearPD")
+
+importMethodsFrom("Matrix", "crossprod", "solve")
+
