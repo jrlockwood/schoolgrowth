@@ -33,6 +33,11 @@
 ## 01/08/2019:
 ##   -some changes to residual calculations to try to reduce RAM footprint, including using
 ##    Matrix:::sparse.model.matrix to get the fitted values from the two levels of fixed effects
+##
+## 01/11/2019:
+##   -updated blp() to return weights, and modified schoolgrowth() to track weights and return them
+
+
 
 
 
@@ -40,8 +45,6 @@
 
 ## TODO:
 ## -more validity checks on control parameters and/or input data
-##
-## -check for connectedness for cells and schools (check model rank?)
 ##
 ## -option to parameterize SigmaX and estimate those parameters
 ##
@@ -384,6 +387,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## d$bhat  <- as.vector((model.matrix(~cell - 1, data=d, contrasts.arg=list(cell = contr.treatment))[,-1,drop=FALSE]) %*% (coef(lm( I(d$G - ave(d$G, d$school)) ~ X - 1))))
             ## d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
             ## d$bhat <- NULL
+            .mdf    <- length(unique(d$school)) + length(unique(d$cell)) - 1
             .X      <- sparse.model.matrix(~school + cell -1, data=d)
             .xpx    <- crossprod(.X)
             .xpy    <- crossprod(.X, d$G)
@@ -394,7 +398,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             if(max(abs(c(tapply(d$R, d$school, mean), tapply(d$R, d$cell, mean)))) > 1e-8){
                 stop("Error in computing residuals; not orthogonal to design matrix")
             }
-            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - (length(unique(d$school)) + length(unique(d$cell)) - 1))
+            Gmodel["varR"] <- sum(d$R^2) / (nrow(d) - .mdf)
             ## check (only with small dataset)
             ##
             ## cat("CHECKING MATRIX CALCS")
@@ -608,6 +612,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         Ns <- Ns + t(Ns)
         diag(Ns) <- diag(Ns)/2
 
+        ## create matrix to store weights for direct and BLP estimators.
+        ## also stored indicator "obs" which indicates whether there are observed data for the
+        ## corresponding cell.
+        weights           <- matrix(0, ncol=3, nrow=K)
+        rownames(weights) <- allcells
+        colnames(weights) <- c("obs","direct","blp")
+
         ## proceed if the school has measures for the target cells
         ## (and if needed, target_contrast cells)
         validschool <- any(x$cell %in% target_cells)
@@ -644,12 +655,18 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             
             tmp <- blp(x$Y, lambda, x$muhat, vXs, vUs, etol = control$min_eigenvalue)
+            weights[x$cell,"obs"]    <- 1
+            weights[x$cell,"direct"] <- tmp$wgt[,"direct"]
+            weights[x$cell,"blp"]    <- tmp$wgt[,"blp"]
             
-            return(data.frame(school = x$school[1], ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp)), stringsAsFactors=FALSE))
+            return(list(est = data.frame(school = x$school[1], ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE),
+                        wgt = weights))
         }
     }
-    b <- do.call("rbind",lapply( split(dsch, dsch$school), blpit))
-
+    .res    <- lapply(split(dsch, dsch$school), blpit)
+    b       <- do.call("rbind", lapply(.res, function(x){ x$est }))
+    weights <- lapply(.res, function(x){ x$wgt })
+        
     ## ####################
     ## RETURN
     ## ####################
@@ -667,7 +684,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                N                     = NULL,
                target_cells          = target_cells,
                target_contrast_cells = target_contrast_cells,
-               adjusted_growth       = b)
+               adjusted_growth       = b,
+               weights               = weights)
     if(control$return.N){
         .r$N <- N
     }
