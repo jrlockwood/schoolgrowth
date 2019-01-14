@@ -37,6 +37,11 @@
 ## 01/11/2019:
 ##   -updated blp() to return weights, and modified schoolgrowth() to track weights and return them
 ##   -changed NAMESPACE and DESCRIPTION so that Matrix library is not loaded
+##
+## 01/14/2019:
+##   -changed how weights were returned so that NULL entries are excluded, so that length of weights
+##   list matches the number of rows of the adjusted growth matrix
+
 
 
 
@@ -667,6 +672,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     .res    <- lapply(split(dsch, dsch$school), blpit)
     b       <- do.call("rbind", lapply(.res, function(x){ x$est }))
     weights <- lapply(.res, function(x){ x$wgt })
+    weights <- weights[!sapply(weights, is.null)]
+    stopifnot( (length(weights) == nrow(b)) && all(names(weights) == b$school) )
         
     ## ####################
     ## RETURN
