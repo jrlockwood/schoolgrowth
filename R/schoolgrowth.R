@@ -1,63 +1,3 @@
-## CHANGELOG:
-## 11/27/2018:
-##   -first commit to package
-##
-## 11/30/2018:
-##   -fixed RAM-eating unique() operation
-##   -changed "target" to be a named vector
-##   -added some elements to return
-##   -added ... argument that gets passed to nearPD()
-##   -added arguments SigmaX, SigmaU, N that can be used to bypass variance component calculation
-##
-## 12/3/2018:
-##   -relaxed requirement that "target" be final year; prints warning if target does not include
-##    final year
-##   -added some more checks while parsing "target"
-##
-## 12/4/2018:
-##   -added some variance components and R^2 for model of G
-##   -added option "schoolFE" to control list; defaults to TRUE; if FALSE we do not use school FE
-##   -required each year*grade*subject combination to have at least two schools
-##
-## 12/5/2018:
-##   -more checks on input field formats plus coercion to character
-##   -return "dtab"
-##
-## 12/12/2018:
-##   -added option "target_contrast" that gets negative weights, to allow estimation of contrasts
-##
-## 01/04/2019:
-##   -some fixes so that function will still work, and produce BLP, when the number of cells is
-##    only 1 or 2.  also changed syntax of rm() after computing variance component estimates
-##
-## 01/08/2019:
-##   -some changes to residual calculations to try to reduce RAM footprint, including using
-##    Matrix:::sparse.model.matrix to get the fitted values from the two levels of fixed effects
-##
-## 01/11/2019:
-##   -updated blp() to return weights, and modified schoolgrowth() to track weights and return them
-##   -changed NAMESPACE and DESCRIPTION so that Matrix library is not loaded
-##
-## 01/14/2019:
-##   -changed how weights were returned so that NULL entries are excluded, so that length of weights
-##   list matches the number of rows of the adjusted growth matrix
-
-
-
-
-
-
-
-
-## TODO:
-## -more validity checks on control parameters and/or input data
-##
-## -option to parameterize SigmaX and estimate those parameters
-##
-## -maybe allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
-##
-## -fix global binding warnings in R CMD check
-
 schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), quietly=TRUE, SigmaX = NULL, SigmaU = NULL, N = NULL, ...){
 
     ## basic argument checks
@@ -367,11 +307,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## ###################################################################
     ## shrinkage will be based on residuals controlling for a block of fixed effects
-    ## for grade*year*subject, and also school fixed effect if control$schoolFE==TRUE
-    ##
-    ## NOTE: we ignore the resulting loss of degrees of freedom in later
-    ## calculations.
-    ## we get residuals using two-stage regression absorbing schools if control$schoolFE==TRUE
+    ## for grade*year*subject, and also school fixed effects if control$schoolFE==TRUE.
     ## ###################################################################
     d$Y     <- ave(d$G, d$school, d$cell)
     Gmodel  <- c(varG = var(d$G))    
@@ -380,6 +316,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     if(K > 1){ ## there is more than one cell:
         if(control$schoolFE){
+            ## OLD CODE:
             ## drop one column of design matrix to account for fact that fixed effects sum
             ## to intercept, and "cell" is a partition that also generates an intercept
             ##
@@ -394,12 +331,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## d$muhat <- (ave(d$G, d$school) - ave(d$bhat, d$school)) + d$bhat
             ## d$bhat <- NULL
             .mdf    <- length(unique(d$school)) + length(unique(d$cell)) - 1
-            .X      <- sparse.model.matrix(~school + cell -1, data=d)
+            .X      <- sparse.model.matrix(~cell + school -1, data=d, contrasts.arg=list(cell="contr.treatment", school="contr.sum"))
             .xpx    <- crossprod(.X)
             .xpy    <- crossprod(.X, d$G)
             .bhat   <- solve(.xpx, .xpy)
             d$muhat <- as.vector(.X %*% .bhat)
-            rm(.X,.xpx,.xpy,.bhat); gc()
+            .bhat   <- as.vector(.bhat)
+            names(.bhat) <- gsub("cell","",colnames(.X))
+            rm(.X,.xpx,.xpy); gc()
             d$R     <- d$G - d$muhat
             if(max(abs(c(tapply(d$R, d$school, mean), tapply(d$R, d$cell, mean)))) > 1e-8){
                 stop("Error in computing residuals; not orthogonal to design matrix")
@@ -427,7 +366,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## #######################################
     ## estimate "noise" and "signal" variance components using method-of-moments
     ## #######################################
-
     if(est.vc){
         ## "signal" and "noise" variance-covariance estimates    
         dcell$vX     <- dcell$vU     <- 0
@@ -601,7 +539,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     ## #################
-    ## BLP calculation
+    ## compute and check school*cell aggregates in prep for BLP calculations
     ## #################
     cat("Computing smoothed school measures...\n")
     d$n    <- ave(rep(1,nrow(d)), d$school, d$cell, FUN=sum)
@@ -609,7 +547,22 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(nrow(dsch) != nrow(unique(d[,c("school","grade","year","subject","cell")]))){
         stop("problem computing dsch")
     }
-    
+
+    if(control$schoolFE){
+        if(max(sapply(split(dsch, dsch$school), function(x){
+            .pi         <- x$n / sum(x$n)
+            .cellmeans  <- .bhat[x$cell]
+            .schoolmean <- sum(.pi * x$Y)
+            .adjmean    <- .schoolmean - sum(.pi * .cellmeans)
+            max(abs(x$muhat - (.adjmean + .cellmeans)))
+        })) > 1e-10){
+            stop("problem with alignment of dsch with model residuals")
+        }
+    }
+
+    ## #################
+    ## BLP calculation
+    ## #################
     blpit <- function(x){
         ## get matrix of counts for this school
         Ns <- matrix(0,ncol=K,nrow=K)
@@ -633,9 +586,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         
         if(validschool){
-            Ns  <- Ns[x$cell, x$cell, drop=F]
+            Ns     <- Ns[x$cell, x$cell, drop=F]
             stopifnot(all(diag(Ns) == x$n))
             Ntilde <- Ns / (diag(Ns) %*% t(diag(Ns)))
+            .pi    <- diag(Ns)/sum(diag(Ns))
             
             vXs <- vX[x$cell, x$cell,drop=F]
             vUs <- vU[x$cell, x$cell,drop=F] * Ntilde
@@ -661,9 +615,19 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             
             tmp <- blp(x$Y, lambda, x$muhat, vXs, vUs, etol = control$min_eigenvalue)
+        
             weights[x$cell,"obs"]    <- 1
-            weights[x$cell,"direct"] <- tmp$wgt[,"direct"]
-            weights[x$cell,"blp"]    <- tmp$wgt[,"blp"]
+            weights[x$cell,"direct"] <- lambda
+            ## what we define as the BLP weights depends on whether or not we use schoolFE.
+            ## when we use schoolFE we want to account for the fact that, aside from the adjustment
+            ## for marginal cell means, the school mean is sum(.pi * x$Y).  otherwise we just
+            ## define the weights to be lambda'Q.
+            if(!control$schoolFE){
+                weights[x$cell,"blp"] <- as.vector(t(lambda) %*% tmp$Q)
+            } else {
+                .Pi <- matrix(.pi, nrow=nrow(x), ncol=nrow(x), byrow=T)
+                weights[x$cell,"blp"] <- as.vector( t(lambda) %*% ( (tmp$IminusQ %*% .Pi) + tmp$Q ) )
+            }
             
             return(list(est = data.frame(school = x$school[1], ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE),
                         wgt = weights))
@@ -696,6 +660,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                weights               = weights)
     if(control$return.N){
         .r$N <- N
+    }
+    if(control$schoolFE){
+        .r$bhat <- .bhat
     }
     return(.r)
 }

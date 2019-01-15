@@ -41,11 +41,11 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-6){
     ## PRMSE of BLP relative to direct estimator
     prmse.direct <- 1 - mse.blp/mse.direct
 
-    return(list(est = c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, prmse.null = prmse.null, prmse.direct = prmse.direct),
-                wgt = cbind(direct = as.vector(lambda), blp = as.vector(t(lambda) %*% Q))))
+    return(list(est     = c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, prmse.null = prmse.null, prmse.direct = prmse.direct),
+                Q       = Q,
+                IminusQ = IminusQ))
 }
 
-##
 ## library(JRLmisc)
 ## Y       <- rnorm(6)
 ## lambda  <- c(1,0,3,2,0,0)
