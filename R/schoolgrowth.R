@@ -549,14 +549,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     if(control$schoolFE){
-        .chk <- sapply(split(dsch, dsch$school), function(x){
+        .chk <- t(sapply(split(dsch, dsch$school), function(x){
             .pi         <- x$n / sum(x$n)
             .cellmeans  <- .bhat[x$cell]
             .schoolmean <- sum(.pi * x$Y)
-            .adjmean    <- .schoolmean - sum(.pi * .cellmeans)
-            max(abs(x$muhat - (.adjmean + .cellmeans)))
-        })
-        if(max(.chk) > 1e-7){
+            .schoolFE   <- .schoolmean - sum(.pi * .cellmeans)
+            return(c(.schoolFE, max(abs(x$muhat - (.schoolFE + .cellmeans)))))
+        }))
+        a <- .bhat[setdiff(names(.bhat), allcells)]
+        a <- c(a, -sum(a))
+        if( (max(.chk[,2]) > 1e-7) || (max(abs(.chk[,1] - a)) > 1e-7) ){
             stop("problem with alignment of dsch with model residuals")
         }
     }
