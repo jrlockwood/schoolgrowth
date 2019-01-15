@@ -627,6 +627,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 weights[x$cell,"blp"] <- as.vector(t(lambda) %*% tmp$Q)
             } else {
                 .Pi <- matrix(.pi, nrow=nrow(x), ncol=nrow(x), byrow=T)
+                ## NOTE: these weights sum to 1...
                 weights[x$cell,"blp"] <- as.vector( t(lambda) %*% ( (tmp$IminusQ %*% .Pi) + tmp$Q ) )
             }
             
