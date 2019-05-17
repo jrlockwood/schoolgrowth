@@ -8,5 +8,5 @@ importFrom("Matrix", "sparse.model.matrix", "sparseMatrix", "sparseVector")
 
 importFrom("MASS", "ginv")
 
-importMethodsFrom("Matrix", "crossprod", "solve", "diag")
+importMethodsFrom("Matrix", "crossprod", "solve", "diag", "t")
 
