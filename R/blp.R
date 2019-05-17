@@ -1,31 +1,46 @@
-blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-6){
+blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-04){
     ## X has E[X] = mu, var[X] = SigmaX
     ## Y = X + U where E[U|X] = 0, var[U] = SigmaU
-    ## compute BLP of lambda'X from Y, along with MSE
+    ## compute BLP of lambda'X from Y, along with MSE and PRMSE
     ##
     ## algebra:
     ## Q = SigmaX(SigmaX + SigmaU)^{-1}
     ## BLP = lambda'[ (I-Q)mu + QY ]
     ## MSE = tr(lambda lambda' (Q SigmaU Q' + (I-Q)SigmaX(I-Q)'))
+    ##
+    ## NOTE: all eigenvalues of (SigmaX + SigmaU) that are less than etol*max eigenvalue
+    ## are zeroed, and the Moore-Penrose inverse is used to get coefficients for BLP.
 
     ## checks
+    stopifnot(is.matrix(SigmaX) && is.matrix(SigmaU))    
     stopifnot(is.numeric(Y) && is.numeric(lambda) && is.numeric(mu) && is.numeric(SigmaX) && is.numeric(SigmaU) && is.numeric(etol))
     stopifnot(all(!is.na(c(Y,lambda,mu,SigmaX,SigmaU,etol))))
     p <- length(Y)
     if(p==1){
         dim(SigmaX) <- dim(SigmaU) <- c(1,1)
-    }    
-    stopifnot(is.matrix(SigmaX) && is.matrix(SigmaU))
+    }
     stopifnot( (length(lambda) == p) && (length(mu) == p) && (nrow(SigmaX) == p) && (ncol(SigmaX) == p) && (nrow(SigmaU) == p) && (ncol(SigmaU) == p) )
     stopifnot(max(abs(SigmaX - t(SigmaX))) < 1e-8)
     stopifnot(max(abs(SigmaU - t(SigmaU))) < 1e-8)
     dim(Y) <- dim(lambda) <- dim(mu) <-  c(p,1)
-    stopifnot(all(eigen(SigmaX + SigmaU)$values > etol))
+
+    ## adjustment based on eigenvalues
+    SigmaXpU <- SigmaX + SigmaU
+    e        <- eigen(SigmaXpU)
+    tozero   <- which(e$values < max(e$values)*etol)
+    if(length(tozero) > 0){
+        print("warning in blp: eigenvalues of SigmaX + SigmaU adjusted")
+        e$values[tozero] <- 0.0
+        SigmaXpU <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+    }
     
     ## computations
     est.direct <- as.vector(t(lambda) %*% Y)
     mse.direct <- as.vector(t(lambda) %*% SigmaU %*% lambda)
-    Q          <- SigmaX %*% solve(SigmaX + SigmaU)
+    Q          <- SigmaX %*% ginv(SigmaXpU)
+    if(max(abs( (Q %*% SigmaXpU) - SigmaX)) > 1e-06){
+        print("warning in blp: G-inverse solution to BLP coefficients only approximate")
+    }
     IminusQ    <- diag(p) - Q
     est.blp    <- as.vector(t(lambda) %*% ( (IminusQ %*% mu) + (Q %*% Y) ))
     part       <- (Q %*% SigmaU %*% t(Q)) + (IminusQ %*% SigmaX %*% t(IminusQ))
@@ -46,6 +61,8 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-6){
                 IminusQ = IminusQ))
 }
 
+## simple case
+##
 ## library(JRLmisc)
 ## Y       <- rnorm(6)
 ## lambda  <- c(1,0,3,2,0,0)
@@ -55,3 +72,11 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-6){
 ## sdu     <- sqrt(c(0.1, 0.1, 0.15, 0.05, 0.10, 0.15))
 ## SigmaU  <- diag(sdu) %*% CS(0.1,6) %*% diag(sdu)
 ## blp(Y, lambda, mu, SigmaX, SigmaU)
+
+## case where eigenvalues get adjusted
+##
+## e <- eigen(SigmaX)
+## e$values[which(e$values < 0.20)] <- -0.10
+## SigmaX <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+## blp(Y, lambda, mu, SigmaX, SigmaU)
+
