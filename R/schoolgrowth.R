@@ -1,31 +1,3 @@
-## FLAG NEED TO DEAL WITH vX_est, right now just estimating all elements of vX without regard to vXest
-## FLAG adjusted vE does not necessarily satisfy fixed zeros
-
-
-## ## FOR TESTING
-## options(width=120)
-## library(JRLmisc)
-## library(Matrix)
-## 
-## load("~/Projects/2017-FASP-katherine-growth/paper-smoothing-aggregates/code/02b-make-nyc-data-example-withSGPs.Robj")
-## print(dim(d))
-## print(head(d))
-## d$G <- d$G2
-## print(summary(d$G))
-## svars <- c("stuid","school","grade","year","subject","G")
-
-## ## RESTRICTING TO 3 YEARS
-## d <- subset(d, year %in% 1:3)
-## 
-## target = c(years="final", subjects="math", grades="all", weights="n"); control=list(school_nmin=0); quietly=FALSE; target_contrast = NULL; vE = NULL
-## ## test syntax
-## r <- schoolgrowth(subset(d, year %in% 1:3), target = c(years="final", subjects="math", grades="all", weights="n"), control=list(school_nmin=0), quietly=FALSE, target_contrast = NULL, vE = NULL)
-
-
-
-
-
-
 schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), quietly=TRUE, vE = NULL){
 
     ## basic argument checks
