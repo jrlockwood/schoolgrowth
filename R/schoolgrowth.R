@@ -477,7 +477,22 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     Gmodel     <- c(varG = var(d$G))
     d$schoolid <- factor(d$schoolid)
     d$bpid     <- factor(d$bpid)
-    
+
+    ## first fit school FE only, no blocks, for R^2 calculation letting schools
+    ## have as much as possible
+    .mdf    <- length(unique(d$schoolid))
+    .X      <- sparse.model.matrix(~schoolid - 1, data=d, contrasts.arg=list(schoolid="contr.treatment"))
+    stopifnot(all(.X@x %in% c(0,1)) && (ncol(.X) == .mdf))
+    stopifnot(length(grep("schoolid",colnames(.X))) == length(unique(d$school)))
+    .xpx    <- crossprod(.X)
+    .xpy    <- crossprod(.X, d$G)
+    .bhat   <- solve(.xpx, .xpy)
+    d$muhat <- as.vector(.X %*% .bhat)
+    stopifnot(max(abs(tapply(d$muhat, d$school, mean) - tapply(d$G, d$school, mean))) < 1e-6)
+    .e      <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - .mdf)
+    Gmodel["Rsq_sfe"] <- 1.0 - (.e / Gmodel["varG"])
+
+    ## now fit the actual model with school FE and block/pattern means
     .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
     .X      <- sparse.model.matrix(~schoolid - 1 + bpid, data=d, contrasts.arg=list(schoolid="contr.treatment",bpid="contr.sum"))
     stopifnot(all(.X@x %in% c(-1,0,1)) && (ncol(.X) == .mdf))
@@ -506,8 +521,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     rm(.X,.xpx,.xpy); gc()
-    Gmodel["varR"] <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - .mdf)
-    Gmodel["Rsq"]  <- 1.0 - (Gmodel["varR"]/Gmodel["varG"])
+    Gmodel["varE"] <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - .mdf)
+    Gmodel["Rsq_tot"]  <- 1.0 - (Gmodel["varE"]/Gmodel["varG"])
+    
     ## cat("CHECKING MATRIX CALCS")
     ## d$muhat_chk <- fitted(lm(G ~ as.factor(school) + bpid, data=d))
     ## print(max(abs(d$muhat - d$muhat_chk)))

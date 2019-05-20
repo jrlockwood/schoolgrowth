@@ -1,7 +1,7 @@
 Package: schoolgrowth
 Type: Package
 Title: Functions for Smoothing School-Level Growth Measures
-Version: 0.1-20
+Version: 0.1-21
 Date: 2019-05-20
 Depends: R (>= 3.1.0)
 Imports: stats, methods, Matrix, MASS
