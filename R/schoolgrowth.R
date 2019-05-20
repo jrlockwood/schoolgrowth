@@ -480,16 +480,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## first fit school FE only, no blocks, for R^2 calculation letting schools
     ## have as much as possible
-    .mdf    <- length(unique(d$schoolid))
-    .X      <- sparse.model.matrix(~schoolid - 1, data=d, contrasts.arg=list(schoolid="contr.treatment"))
-    stopifnot(all(.X@x %in% c(0,1)) && (ncol(.X) == .mdf))
-    stopifnot(length(grep("schoolid",colnames(.X))) == length(unique(d$school)))
-    .xpx    <- crossprod(.X)
-    .xpy    <- crossprod(.X, d$G)
-    .bhat   <- solve(.xpx, .xpy)
-    d$muhat <- as.vector(.X %*% .bhat)
-    stopifnot(max(abs(tapply(d$muhat, d$school, mean) - tapply(d$G, d$school, mean))) < 1e-6)
-    .e      <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - .mdf)
+    d$muhat <- ave(d$G, d$school)
+    .e      <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - length(unique(d$school)))
     Gmodel["Rsq_sfe"] <- 1.0 - (.e / Gmodel["varG"])
 
     ## now fit the actual model with school FE and block/pattern means
