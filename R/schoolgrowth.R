@@ -786,7 +786,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$vE <- dblockpairs$vEraw
 
         e <- eigen(vE)$values
-        if(any(e < max(e)*control.eig.tol)){
+        if(any(e < max(e)*control$eig.tol)){
             cat("Adjusting vE to make PSD...\n")
             .vE <- vE
             tmp <- nearPD2(vE, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)$mat
