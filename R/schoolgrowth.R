@@ -845,7 +845,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
 
             ## get BLP
-            tmp <- blp(x$tab$Y, lambda, x$tab$muhat, as.matrix(vX[b,b,drop=F]), as.matrix(x$vU[b,b,drop=F]), control$eig.tol)
+            tmp <- blp(x$tab$Y, lambda, x$tab$muhat, as.matrix(vX[b,b,drop=F]), as.matrix(x$vU[b,b,drop=F]), eig.tol=control$eig.tol)
 
             ## create matrix to store weights for direct and BLP estimators.
             ## also stored indicator "obs" which indicates whether there
