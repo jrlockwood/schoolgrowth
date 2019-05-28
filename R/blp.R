@@ -1,4 +1,4 @@
-blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-04){
+blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06){
     ## X has E[X] = mu, var[X] = SigmaX
     ## Y = X + U where E[U|X] = 0, var[U] = SigmaU
     ## compute BLP of lambda'X from Y, along with MSE and PRMSE
@@ -8,13 +8,13 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-04){
     ## BLP = lambda'[ (I-Q)mu + QY ]
     ## MSE = tr(lambda lambda' (Q SigmaU Q' + (I-Q)SigmaX(I-Q)'))
     ##
-    ## NOTE: all eigenvalues of (SigmaX + SigmaU) that are less than etol*max eigenvalue
+    ## NOTE: all eigenvalues of (SigmaX + SigmaU) that are less than eig.tol*max eigenvalue
     ## are zeroed, and the Moore-Penrose inverse is used to get coefficients for BLP.
 
     ## checks
     stopifnot(is.matrix(SigmaX) && is.matrix(SigmaU))    
-    stopifnot(is.numeric(Y) && is.numeric(lambda) && is.numeric(mu) && is.numeric(SigmaX) && is.numeric(SigmaU) && is.numeric(etol))
-    stopifnot(all(!is.na(c(Y,lambda,mu,SigmaX,SigmaU,etol))))
+    stopifnot(is.numeric(Y) && is.numeric(lambda) && is.numeric(mu) && is.numeric(SigmaX) && is.numeric(SigmaU) && is.numeric(eig.tol))
+    stopifnot(all(!is.na(c(Y,lambda,mu,SigmaX,SigmaU,eig.tol))))
     p <- length(Y)
     if(p==1){
         dim(SigmaX) <- dim(SigmaU) <- c(1,1)
@@ -27,7 +27,7 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, etol=1e-04){
     ## adjustment based on eigenvalues
     SigmaXpU <- SigmaX + SigmaU
     e        <- eigen(SigmaXpU)
-    tozero   <- which(e$values < max(e$values)*etol)
+    tozero   <- which(e$values < max(e$values)*eig.tol)
     if(length(tozero) > 0){
         print("warning in blp: eigenvalues of SigmaX + SigmaU adjusted")
         e$values[tozero] <- 0.0

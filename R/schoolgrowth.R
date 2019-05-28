@@ -97,10 +97,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(vE_supplied){
         cat("Checking user-supplied value of vE...\n")
         
-        vE <- as.matrix(vE)
+        if( !is(vE,"symmetricMatrix") || !is(vE,"sparseMatrix") ){
+            stop("vE must be stored as a sparse, symmetric matrix from the Matrix library")
+        }
         
-        if( !is.numeric(vE) || any(is.na(vE)) ){
-            stop("vE must be a numeric matrix with no missing values")
+        if( any(is.na(vE)) ){
+            stop("vE cannot contain missing values")
         }
         
         if( !((nrow(vE) == B) && all(rownames(vE) == allblocks)) ) {
@@ -111,11 +113,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("vE columns not specified properly")
         }
 
-        if( max(abs(vE - t(vE))) > 1e-8 ){
-            stop("vE is not symmetric")
-        }
-
-        if( min(eigen(vE)$values) < -1e-8 ){
+        if( min(eigen(vE)$values) < -sqrt(.Machine$double.eps) ){
             stop("vE appears to have negative eigenvalues")
         }
     }
@@ -124,11 +122,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     vX_supplied <- !is.null(vX)
     if(vX_supplied){
         cat("Checking user-supplied value of vX...\n")
+
+        if( !is(vX,"symmetricMatrix") || !is(vX,"sparseMatrix") ){
+            stop("vX must be stored as a sparse, symmetric matrix from the Matrix library")
+        }
         
-        vX <- as.matrix(vX)
-        
-        if( !is.numeric(vX) || any(is.na(vX)) ){
-            stop("vX must be a numeric matrix with no missing values")
+        if( any(is.na(vX)) ){
+            stop("vX cannot contain missing values")
         }
         
         if( !((nrow(vX) == B) && all(rownames(vX) == allblocks)) ) {
@@ -139,11 +139,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("vX columns not specified properly")
         }
 
-        if( max(abs(vX - t(vX))) > 1e-8 ){
-            stop("vX is not symmetric")
-        }
-
-        if( min(eigen(vX)$values) < -1e-8 ){
+        if( min(eigen(vX)$values) < -sqrt(.Machine$double.eps) ){
             stop("vX appears to have negative eigenvalues")
         }
 
@@ -151,7 +147,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("vX does not appear to satisfy required sum-to-zero constraints")
         }
     }
-        
+
     ## ########################################################
     ## parse "target"
     ## ########################################################
@@ -603,13 +599,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## create vE
     ## NOTE: this is provisional, used for moment estimation, and may not be PSD.
-    if(vE_supplied){
-        tmp <- dblockpairs
-    } else {
+    if(!vE_supplied){
         tmp <- subset(dblockpairs, vE_est)
+        vE  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$vE, dims=c(B,B), symmetric=TRUE)
+        rownames(vE) <- colnames(vE) <- allblocks
     }
-    vE  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$vE, dims=c(B,B), symmetric=TRUE)
-    rownames(vE) <- colnames(vE) <- allblocks
 
     ## create matrix to implement sum-to-zero constraints
     A  <- sparseMatrix(i=c(1:(B-1), rep(B,B-1)), j=c(1:(B-1),1:(B-1)), x=c(rep(1,B-1),rep(-1,B-1)), dims=c(B,B-1))
@@ -642,8 +636,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         Ds       <- sparseMatrix(i=b, j=b, x=1.0/x$tab$nsb, dims=c(B,B), symmetric=TRUE)
         x$Ntilde <- Ds %*% x$N %*% Ds
         x$vU     <- x$Ntilde * vE
-        x$Ntilde <- as(x$Ntilde, "symmetricMatrix")
-        x$vU     <- as(x$vU,     "symmetricMatrix")
+        x$Ntilde <- as(x$Ntilde, "dsCMatrix")
+        x$vU     <- as(x$vU,     "dsCMatrix")
         x$pis    <- sparseVector(x$tab$nsb/sum(x$tab$nsb), i = x$tab$blockid, length=B)
 
         ## compute school contribution to adj_observed_moments, restricting to
@@ -770,7 +764,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$vXraw <- vXraw[lower.tri(vXraw, diag=TRUE)]
         
         ## force vXstar to be PSD and create "vX" from that, which will be used for
-        ## later calculations
+        ## later calculations.
+        ## NOTE: we don't use nearPD2 here because there are currently no forced zeros
         e      <- eigen(vXstar)
         e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
         vXstar.adj <- e$vectors %*% diag(e$values) %*% t(e$vectors)
@@ -784,28 +779,28 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## ###################################################
     ## now that vX estimation is done, go back and force vE to be PSD if needed.
-    ## NOTE: because the result is no longer necessarily sparse, we do not
-    ## restrict to vE_est to create the matrix.
-    ## NOTE: we do not do any adjustment to user-supplied vE
+    ## NOTE: now using nearPD2 function to maintain fixed zeros
     ## ###################################################
     if(!vE_supplied){    
         names(dblockpairs)[which(names(dblockpairs)=="vE")] <- "vEraw"
         dblockpairs$vE <- dblockpairs$vEraw
 
-        e      <- eigen(vE)
-        tozero <- which(e$values < max(e$values)*control$eig.tol)
-    
-        if(length(tozero) > 0){
-            e$values[tozero] <- 0.0
-            vE <- e$vectors %*% diag(e$values) %*% t(e$vectors)
-            dblockpairs$vE <- vE[lower.tri(vE, diag=TRUE)]
-            vE  <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vE, dims=c(B,B), symmetric=TRUE)
+        e <- eigen(vE)$values
+        if(any(e < max(e)*control.eig.tol)){
+            cat("Adjusting vE to make PSD...\n")
+            .vE <- vE
+            tmp <- nearPD2(vE, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)$mat
+            vE  <- as(tmp,"dsCMatrix")
             rownames(vE) <- colnames(vE) <- allblocks
+            cat(paste0("Smallest eigenvalue of adjusted vE: ",min(eigen(vE)$values),"\n"))
+            cat("Summary of differences between original and adjusted vE:\n")
+            print(summary(c(as.matrix(vE - .vE))))
+            dblockpairs$vE <- vE[lower.tri(vE, diag=TRUE)]
 
             ## adjust vU elements of dsch as well, since these are used in BLP
             for(s in 1:length(dsch)){
                 x$vU     <- x$Ntilde * vE
-                x$vU     <- as(x$vU,     "symmetricMatrix")
+                x$vU     <- as(x$vU, "dsCMatrix")
             }
         }
     }
