@@ -2,11 +2,11 @@ export(blp, schoolgrowth)
 
 importFrom("stats", "ave", "cov", "na.omit", "reshape", "var", "weighted.mean")
 
-importFrom("methods", "as")
+importFrom("methods", "as", "is", "new")
 
-importFrom("Matrix", "sparse.model.matrix", "sparseMatrix", "sparseVector")
+importFrom("Matrix", "sparse.model.matrix", "sparseMatrix", "sparseVector", "symmpart")
 
 importFrom("MASS", "ginv")
 
-importMethodsFrom("Matrix", "crossprod", "solve", "diag", "t")
+importMethodsFrom("Matrix", "crossprod", "tcrossprod", "solve", "diag", "t")
 
