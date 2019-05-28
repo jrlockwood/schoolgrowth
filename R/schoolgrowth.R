@@ -636,8 +636,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         Ds       <- sparseMatrix(i=b, j=b, x=1.0/x$tab$nsb, dims=c(B,B), symmetric=TRUE)
         x$Ntilde <- Ds %*% x$N %*% Ds
         x$vU     <- x$Ntilde * vE
-        x$Ntilde <- as(x$Ntilde, "dsCMatrix")
-        x$vU     <- as(x$vU,     "dsCMatrix")
+        x$Ntilde <- as(x$Ntilde, "symmetricMatrix")
+        x$vU     <- as(x$vU,     "symmetricMatrix")
         x$pis    <- sparseVector(x$tab$nsb/sum(x$tab$nsb), i = x$tab$blockid, length=B)
 
         ## compute school contribution to adj_observed_moments, restricting to
@@ -790,7 +790,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             cat("Adjusting vE to make PSD...\n")
             .vE <- vE
             tmp <- nearPD2(vE, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)$mat
-            vE  <- as(tmp,"dsCMatrix")
+            vE  <- as(tmp,"sparseMatrix")
             rownames(vE) <- colnames(vE) <- allblocks
             cat(paste0("Smallest eigenvalue of adjusted vE: ",min(eigen(vE)$values),"\n"))
             cat("Summary of differences between original and adjusted vE:\n")
@@ -800,7 +800,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## adjust vU elements of dsch as well, since these are used in BLP
             for(s in 1:length(dsch)){
                 x$vU     <- x$Ntilde * vE
-                x$vU     <- as(x$vU, "dsCMatrix")
+                x$vU     <- as(x$vU, "symmetricMatrix")
             }
         }
     }
