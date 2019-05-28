@@ -1,4 +1,4 @@
-schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), quietly=TRUE, vE = NULL){
+schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), quietly=TRUE, vE = NULL, vX = NULL){
 
     ## basic argument checks
     reqnames <- c("stuid","school","grade","year","subject","G")
@@ -34,8 +34,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         stop("data 'd' has missing values in required variables")
     }
     
-    est.vE <- is.null(vE)
-    
     ## control parameters
     if(!is.list(control)){
         stop("'control' must be a list")
@@ -57,8 +55,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         control$blockpair_school_nmin <- 10
     }
     
-    if(is.null(control$min_relative_eigenvalue)){
-        control$min_relative_eigenvalue <- 1e-04
+    if(is.null(control$eig.tol)){
+        control$eig.tol <- 1e-06
     }
     
     ## restrict data to schools with at least "control$school_nmin" total observations
@@ -93,7 +91,67 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(B <= 2){
         stop("Current function requires at least three blocks")
     }
-    
+
+    ## if applicable, checks on user-supplied vE
+    vE_supplied <- !is.null(vE)
+    if(vE_supplied){
+        cat("Checking user-supplied value of vE...\n")
+        
+        vE <- as.matrix(vE)
+        
+        if( !is.numeric(vE) || any(is.na(vE)) ){
+            stop("vE must be a numeric matrix with no missing values")
+        }
+        
+        if( !((nrow(vE) == B) && all(rownames(vE) == allblocks)) ) {
+            stop("vE rows not specified properly")
+        }
+        
+        if( !((ncol(vE) == B) && all(colnames(vE) == allblocks)) ) {
+            stop("vE columns not specified properly")
+        }
+
+        if( max(abs(vE - t(vE))) > 1e-8 ){
+            stop("vE is not symmetric")
+        }
+
+        if( min(eigen(vE)$values) < -1e-8 ){
+            stop("vE appears to have negative eigenvalues")
+        }
+    }
+
+    ## if applicable, checks on user-supplied vX
+    vX_supplied <- !is.null(vX)
+    if(vX_supplied){
+        cat("Checking user-supplied value of vX...\n")
+        
+        vX <- as.matrix(vX)
+        
+        if( !is.numeric(vX) || any(is.na(vX)) ){
+            stop("vX must be a numeric matrix with no missing values")
+        }
+        
+        if( !((nrow(vX) == B) && all(rownames(vX) == allblocks)) ) {
+            stop("vX rows not specified properly")
+        }
+        
+        if( !((ncol(vX) == B) && all(colnames(vX) == allblocks)) ) {
+            stop("vX columns not specified properly")
+        }
+
+        if( max(abs(vX - t(vX))) > 1e-8 ){
+            stop("vX is not symmetric")
+        }
+
+        if( min(eigen(vX)$values) < -1e-8 ){
+            stop("vX appears to have negative eigenvalues")
+        }
+
+        if( any(abs(apply(vX, 1, sum)) > 1e-8) ){
+            stop("vX does not appear to satisfy required sum-to-zero constraints")
+        }
+    }
+        
     ## ########################################################
     ## parse "target"
     ## ########################################################
@@ -275,7 +333,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     for(wh in 1:B2){
         dblockpairs$nsch[wh]   <- sum( (.tab[,dblockpairs$blockidi[wh]] * .tab[,dblockpairs$blockidj[wh]]) >= 0.99 )
-        dblockpairs$vX_est[wh] <- dblockpairs$nsch[wh] >= control$blockpair_school_nmin
+        dblockpairs$vX_est[wh] <- ifelse(vX_supplied, FALSE, dblockpairs$nsch[wh] >= control$blockpair_school_nmin)
     }
     
     ## #####################################################################
@@ -316,9 +374,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## at least control$pattern_nmin students.
     ##
     ## Also add field to "dblockpairs" that indicates the total number
-    ## of students that are common to that pair of blocks, and then define
+    ## of students that are common to a given pair of blocks, and then define
     ## vE_est as indicator of whether there are a sufficient number of
-    ## students to estimate the corresponding error covariance
+    ## students in that block pair to estimate the corresponding error covariance.
     ## ##################################################################
     stupat           <- table(d$stuid, d$blockid)
     stopifnot( (all(colnames(stupat) == as.character(1:B))) && (nrow(stupat) == length(unique(d$stuid))) )
@@ -330,6 +388,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$vE_est[wh] <- dblockpairs$nstu[wh] >= control$blockpair_student_nmin
     }
 
+    ## stop if any block has too few students
+    tmp <- subset(dblockpairs, blockidi == blockidj)
+    if(!all(tmp$vE_est)){
+        stop("At least one block has fewer than control$blockpair_student_nmin students")
+    }
+    
     stupat           <- data.frame(stuid = rownames(stupat), pattern = apply(as.matrix(stupat), 1, paste, collapse=""), stringsAsFactors=FALSE)
     stupat$stuid     <- as.character(stupat$stuid)
     stupat$pcount    <- ave(rep(1,nrow(stupat)), stupat$pattern, FUN=sum)    
@@ -398,14 +462,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## compute estimate of residual covariance matrix using within-school,
     ## within-block, within-pattern deviations
     ## ########################################################
-    if(est.vE){
+    if(!vE_supplied){
         d$sbp  <- as.integer(as.factor(paste(d$school, d$blockid, d$patternid)))
         d$nsbp <- ave(rep(1,nrow(d)), d$sbp, FUN=sum)
         d$e    <- d$G - ave(d$G, d$sbp)
         
         ## residual variance-covariance estimates, and numbers of students contributing to each
         dblockpairs$vE      <- 0.0
-        dblockpairs$nstu_vE <- 0L
+        dblockpairs$vE_nstu <- 0L
 
         cat("Estimating residual variances...\n")
         .ss  <- tapply(d$e^2, d$blockid, sum)
@@ -414,7 +478,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         stopifnot(all(names(.ss) == 1:B) && all(names(.n) == 1:B) && all(names(.rdf) == 1:B) )
         wh   <- which(dblockpairs$blockidi == dblockpairs$blockidj)
         stopifnot(all(dblockpairs$blockidi[wh] == 1:B))
-        dblockpairs$nstu_vE[wh] <- as.vector(.n)
+        dblockpairs$vE_nstu[wh] <- as.vector(.n)
         dblockpairs$vE[wh]      <- as.vector(.ss / .rdf)
 
         cat("Estimating residual covariances...\n")
@@ -435,7 +499,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 ## restrict to sbp with at least two observations
                 tmp <- subset(tmp, (nsbp.0 >= 2) & (nsbp.1 >= 2))
                 if(nrow(tmp) > 0){
-                    dblockpairs$nstu_vE[wh] <- nrow(tmp)
+                    dblockpairs$vE_nstu[wh] <- nrow(tmp)
                     
                     ## get sbp pairs and compute unbiased estimator of covariance (from notes)
                     tmp$pair  <- paste(tmp$sbp.0, tmp$sbp.1,sep="-")
@@ -449,26 +513,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
         }
         d$sbp <- d$nsbp <- d$e <- NULL
-    } else {
-        if( !is.numeric(vE) || any(is.na(vE)) ){
-            stop("vE must be a numeric matrix with no missing values")
-        }
-        
-        if( !((nrow(vE) == B) && all(rownames(vE) == allblocks)) ) {
-            stop("vE rows not specified properly")
-        }
-        
-        if( !((ncol(vE) == B) && all(colnames(vE) == allblocks)) ) {
-            stop("vE columns not specified properly")
-        }
-
-        if( max(abs(vE - t(vE))) > 1e-6 ){
-            stop("vE is not symmetric")
-        }
-        
+    } else {        
         dblockpairs$vE             <- vE[lower.tri(vE, diag=TRUE)]
-        dblockpairs$nstu_vE        <- 0L
-        is.na(dblockpairs$nstu_vE) <- TRUE
+        dblockpairs$vE_nstu        <- 0L
+        is.na(dblockpairs$vE_nstu) <- TRUE
+        dblockpairs$vE_est         <- FALSE
     }
     
     ## ###################################################################
@@ -550,11 +599,15 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: do this with a loop and accumulate key results so that we don't need
     ## to store large pieces for each school
     ## ########################################################
-    cat("Computing school-level contributions for estimating variance components...\n")
+    cat("Computing required school-level quantities (may be slow when estimating vX)...\n")
 
     ## create vE
     ## NOTE: this is provisional, used for moment estimation, and may not be PSD.
-    tmp <- subset(dblockpairs, vE_est)
+    if(vE_supplied){
+        tmp <- dblockpairs
+    } else {
+        tmp <- subset(dblockpairs, vE_est)
+    }
     vE  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$vE, dims=c(B,B), symmetric=TRUE)
     rownames(vE) <- colnames(vE) <- allblocks
 
@@ -654,37 +707,40 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ##
             ## NOTE: for this step, the use of sparse matrices ended up being notably slower than
             ## standard matrices, so we just use standard matrices
-            Cs     <- (Is - Pis) %*% A
-            ## Zs <- sparseMatrix(i=1,j=1,x=0,dims=c(B*(B+1)/2, (B-1)*B/2))
-            Zs <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
 
-            ## t1 <- proc.time()
-            wh <- 0
-            for(j in 1:B){
-                for(i in j:B){
-                    wh      <- wh + 1
-                    ## SLOW
-                    ## Zs[wh,] <- (as(Cs[i,pos1],"sparseVector") * as(Cs[j,pos2],"sparseVector")) + (as(Cs[i,pos2],"sparseVector") * as(Cs[j,pos1],"sparseVector"))
-                    ##
-                    ## proceed only if we can get a nonzero result for Zs[wh,]
-                    if( (i %in% b) && (j %in% b) ){ 
-                        Zs[wh,] <- (Cs[i,pos1]*Cs[j,pos2]) + (Cs[i,pos2]*Cs[j,pos1])
+            if(!vX_supplied){
+                Cs     <- (Is - Pis) %*% A
+                ## Zs <- sparseMatrix(i=1,j=1,x=0,dims=c(B*(B+1)/2, (B-1)*B/2))
+                Zs <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
+                
+                ## t1 <- proc.time()
+                wh <- 0
+                for(j in 1:B){
+                    for(i in j:B){
+                        wh      <- wh + 1
+                        ## SLOW
+                        ## Zs[wh,] <- (as(Cs[i,pos1],"sparseVector") * as(Cs[j,pos2],"sparseVector")) + (as(Cs[i,pos2],"sparseVector") * as(Cs[j,pos1],"sparseVector"))
+                        ##
+                        ## proceed only if we can get a nonzero result for Zs[wh,]
+                        if( (i %in% b) && (j %in% b) ){ 
+                            Zs[wh,] <- (Cs[i,pos1]*Cs[j,pos2]) + (Cs[i,pos2]*Cs[j,pos1])
+                        }
                     }
                 }
-            }
-            Zs[,posd] <- Zs[,posd] / 2.0
-            ## t2 <- proc.time()
-            ## print(t2["elapsed"] -t1["elapsed"])
+                Zs[,posd] <- Zs[,posd] / 2.0
+                ## t2 <- proc.time()
+                ## print(t2["elapsed"] -t1["elapsed"])
+                vX_Z <- vX_Z + as(Zs,"sparseMatrix")
             
-            ## CHECK: does Zs do what is intended?
-            ##
-            ## .V      <- matrix(rnorm(B-1,sd=2),nrow=(B-1),ncol=1)
-            ## .V      <- .V %*% t(.V)
-            ## .Vl     <- .V[lower.tri(.V,diag=TRUE)]
-            ## .target <- (Cs %*% .V %*% t(Cs))
-            ## .target <- .target[lower.tri(.target,diag=TRUE)]
-            ## print(max(abs((Zs %*% .Vl) - .target)))
-            vX_Z <- vX_Z + as(Zs,"sparseMatrix")
+                ## CHECK: does Zs do what is intended?
+                ##
+                ## .V      <- matrix(rnorm(B-1,sd=2),nrow=(B-1),ncol=1)
+                ## .V      <- .V %*% t(.V)
+                ## .Vl     <- .V[lower.tri(.V,diag=TRUE)]
+                ## .target <- (Cs %*% .V %*% t(Cs))
+                ## .target <- .target[lower.tri(.target,diag=TRUE)]
+                ## print(max(abs((Zs %*% .Vl) - .target)))
+            }
         }
         dsch[[s]] <- x
         if(!quietly){
@@ -696,55 +752,61 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## compute WLS estimates of vX* elements, force to PSD, and
     ## translate to estimates of vX.
     ## #########################################################
-    cat("Estimating school*block variance components...\n")
-    .Y     <- as.matrix(adj_observed_moments)
-    .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
-    .W     <- sparseMatrix(i=1:B2, j=1:B2, x=dblockpairs$nsch, dims=c(B2,B2), symmetric=TRUE)
-    .xpx   <- t(vX_Z) %*% .W %*% vX_Z
-    .xpy   <- t(vX_Z) %*% .W %*% .Y
-    vXstar <- matrix(0.0, ncol=(B-1), nrow=(B-1))
-    vXstar[lower.tri(vXstar,diag=TRUE)] <- as.vector(solve(.xpx, .xpy))
-    vXstar <- vXstar + t(vXstar)
-    diag(vXstar) <- 0.5 * diag(vXstar)
-
-    ## create "vXraw" which is based on raw vXstar, even if not PSD.
-    ## this is just to save and return
-    vXraw             <- A %*% vXstar %*% t(A)
-    dblockpairs$vXraw <- vXraw[lower.tri(vXraw, diag=TRUE)]
-
-    ## force vXstar to be PSD and create "vX" from that, which will be used for
-    ## later calculations
-    e      <- eigen(vXstar)
-    e$values[which(e$values < max(e$values)*control$min_relative_eigenvalue)] <- 0.0
-    vXstar.adj <- e$vectors %*% diag(e$values) %*% t(e$vectors)
-    vX     <- A %*% vXstar.adj %*% t(A)
+    if(!vX_supplied){
+        cat("Estimating school*block variance components...\n")
+        .Y     <- as.matrix(adj_observed_moments)
+        .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
+        .W     <- sparseMatrix(i=1:B2, j=1:B2, x=dblockpairs$nsch, dims=c(B2,B2), symmetric=TRUE)
+        .xpx   <- t(vX_Z) %*% .W %*% vX_Z
+        .xpy   <- t(vX_Z) %*% .W %*% .Y
+        vXstar <- matrix(0.0, ncol=(B-1), nrow=(B-1))
+        vXstar[lower.tri(vXstar,diag=TRUE)] <- as.vector(solve(.xpx, .xpy))
+        vXstar <- vXstar + t(vXstar)
+        diag(vXstar) <- 0.5 * diag(vXstar)
+        
+        ## create "vXraw" which is based on raw vXstar, even if not PSD.
+        ## this is just to save and return
+        vXraw             <- A %*% vXstar %*% t(A)
+        dblockpairs$vXraw <- vXraw[lower.tri(vXraw, diag=TRUE)]
+        
+        ## force vXstar to be PSD and create "vX" from that, which will be used for
+        ## later calculations
+        e      <- eigen(vXstar)
+        e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
+        vXstar.adj <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+        vX     <- A %*% vXstar.adj %*% t(A)
+        rm(.Y,.W,.xpx,.xpy,vXstar,vXstar.adj)        
+    }
+    
     dblockpairs$vX <- vX[lower.tri(vX, diag=TRUE)]
     vX     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vX, dims=c(B,B), symmetric=TRUE)
     rownames(vX) <- colnames(vX) <- allblocks
-    rm(.Y,.W,.xpx,.xpy,vXstar,vXstar.adj)
 
     ## ###################################################
     ## now that vX estimation is done, go back and force vE to be PSD if needed.
     ## NOTE: because the result is no longer necessarily sparse, we do not
     ## restrict to vE_est to create the matrix.
+    ## NOTE: we do not do any adjustment to user-supplied vE
     ## ###################################################
-    names(dblockpairs)[which(names(dblockpairs)=="vE")] <- "vEraw"
-    dblockpairs$vE <- dblockpairs$vEraw
+    if(!vE_supplied){    
+        names(dblockpairs)[which(names(dblockpairs)=="vE")] <- "vEraw"
+        dblockpairs$vE <- dblockpairs$vEraw
 
-    e      <- eigen(vE)
-    tozero <- which(e$values < max(e$values)*control$min_relative_eigenvalue)
+        e      <- eigen(vE)
+        tozero <- which(e$values < max(e$values)*control$eig.tol)
     
-    if(length(tozero) > 0){
-        e$values[tozero] <- 0.0
-        vE <- e$vectors %*% diag(e$values) %*% t(e$vectors)
-        dblockpairs$vE <- vE[lower.tri(vE, diag=TRUE)]
-        vE  <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vE, dims=c(B,B), symmetric=TRUE)
-        rownames(vE) <- colnames(vE) <- allblocks
+        if(length(tozero) > 0){
+            e$values[tozero] <- 0.0
+            vE <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+            dblockpairs$vE <- vE[lower.tri(vE, diag=TRUE)]
+            vE  <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vE, dims=c(B,B), symmetric=TRUE)
+            rownames(vE) <- colnames(vE) <- allblocks
 
-        ## adjust vU elements of dsch as well, since these are used in BLP
-        for(s in 1:length(dsch)){
-            x$vU     <- x$Ntilde * vE
-            x$vU     <- as(x$vU,     "symmetricMatrix")
+            ## adjust vU elements of dsch as well, since these are used in BLP
+            for(s in 1:length(dsch)){
+                x$vU     <- x$Ntilde * vE
+                x$vU     <- as(x$vU,     "symmetricMatrix")
+            }
         }
     }
 
@@ -787,7 +849,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
 
             ## get BLP
-            tmp <- blp(x$tab$Y, lambda, x$tab$muhat, as.matrix(vX[b,b,drop=F]), as.matrix(x$vU[b,b,drop=F]), control$min_relative_eigenvalue)
+            tmp <- blp(x$tab$Y, lambda, x$tab$muhat, as.matrix(vX[b,b,drop=F]), as.matrix(x$vU[b,b,drop=F]), control$eig.tol)
 
             ## create matrix to store weights for direct and BLP estimators.
             ## also stored indicator "obs" which indicates whether there
