@@ -770,12 +770,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
         vXstar.adj <- e$vectors %*% diag(e$values) %*% t(e$vectors)
         vX     <- A %*% vXstar.adj %*% t(A)
+        dblockpairs$vX <- vX[lower.tri(vX, diag=TRUE)]
+        vX     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vX, dims=c(B,B), symmetric=TRUE)
+        rownames(vX) <- colnames(vX) <- allblocks
         rm(.Y,.W,.xpx,.xpy,vXstar,vXstar.adj)        
+    } else {
+        dblockpairs$vX <- vX[lower.tri(vX, diag=TRUE)]
     }
-    
-    dblockpairs$vX <- vX[lower.tri(vX, diag=TRUE)]
-    vX     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vX, dims=c(B,B), symmetric=TRUE)
-    rownames(vX) <- colnames(vX) <- allblocks
 
     ## ###################################################
     ## now that vX estimation is done, go back and force vE to be PSD if needed.
