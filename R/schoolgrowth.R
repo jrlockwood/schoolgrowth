@@ -1,4 +1,4 @@
-schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), quietly=TRUE, vE = NULL, vX = NULL){
+schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = list(), vE = NULL, vX = NULL){
 
     ## basic argument checks
     reqnames <- c("stuid","school","grade","year","subject","G")
@@ -33,10 +33,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if( !(nrow(na.omit(d[,reqnames])) == nrow(d)) ){
         stop("data 'd' has missing values in required variables")
     }
-    
-    ## control parameters
+
+    ## ###########################
+    ## parse/set control parameters
+    ## ###########################
     if(!is.list(control)){
         stop("'control' must be a list")
+    }
+
+    if(is.null(control$quietly)){
+        control$quietly <- TRUE
     }
     
     if(is.null(control$school_nmin)){
@@ -59,14 +65,37 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         control$eig.tol <- 1e-06
     }
     
+    mean_supplied <- !is.null(control$mean_varname)
+    vE_supplied   <- !is.null(vE)
+    vX_supplied   <- !is.null(vX)
+    
+    if(mean_supplied){
+        if(!is.character(control$mean_varname) || (length(control$mean_varname) > 1) ){
+            stop("'mean_varname' must be a character vector of length 1")
+        }
+        if( !(control$mean_varname %in% names(d)) ){
+            stop("'mean_varname' not present in data 'd'")
+        }
+        if( !is.numeric(d[,control$mean_varname]) ){
+            stop("'mean_varname' in data 'd' must be numeric")
+        }
+        if( any(is.na(d[,control$mean_varname])) ){
+            stop("'mean_varname' in data 'd' has missing values")
+        }
+        if( !(vE_supplied & vX_supplied) ){
+            stop("current version can use mean_varname only when vE and vX are also supplied")
+        }
+        d$muhat <- d[,control$mean_varname]
+    }
+    
     ## restrict data to schools with at least "control$school_nmin" total observations
     cat(paste("Restricting data to schools with at least",control$school_nmin,"student(s)...\n"))
     d$n <- ave(rep(1,nrow(d)), d$school, FUN=sum)
-    if(!quietly){
+    if(!control$quietly){
         print(c(nrec = nrow(d), nsch = length(unique(d$school))))
     }
     d   <- subset(d, n >= control$school_nmin)
-    if(!quietly){
+    if(!control$quietly){
         print(c(nrec = nrow(d), nsch = length(unique(d$school))))
     }
     d$n <- NULL
@@ -93,7 +122,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     ## if applicable, checks on user-supplied vE
-    vE_supplied <- !is.null(vE)
     if(vE_supplied){
         cat("Checking user-supplied value of vE...\n")
         
@@ -119,7 +147,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     ## if applicable, checks on user-supplied vX
-    vX_supplied <- !is.null(vX)
     if(vX_supplied){
         cat("Checking user-supplied value of vX...\n")
 
@@ -322,6 +349,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## vX_est for each blockpair depending on whether there are a sufficient
     ## number of schools to estimate that covariance element.
     ## ###################################################################
+    cat("Computing counts of schools in each block pair...\n")
     .tab <- table(d$school, d$blockid)
     stopifnot(all(colnames(.tab) == 1:B) && all(rownames(.tab) == allschools))
     dblockpairs$nsch   <- 0L    
@@ -339,6 +367,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## for each block, and off-diagonals are the number of students in a given
     ## school contributing to the growth measures in a pair of blocks
     ## #####################################################################
+    cat("Computing counts of students in each block pair by school...\n")
     tmp <- split(d[,c("school","stuid","blockid")], d$school)
     stopifnot(all(names(tmp) == names(dsch)))
     
@@ -481,7 +510,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         for(wh in subset(dblockpairs, (blockidi != blockidj) & vE_est)$index){
             bi <- dblockpairs$blockidi[wh]
             bj <- dblockpairs$blockidj[wh]
-            if(!quietly){
+            if(!control$quietly){
                 cat(paste(bi, bj, "\n"))
             }
             tmp <- subset(d, blockid %in% c(bi, bj), select = c("stuid","school","blockid","sbp","nsbp","e"))
@@ -519,53 +548,59 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## ###################################################################
     ## compute OLS estimates of regression coefficients
     ## ###################################################################
-    cat("Computing OLS estimates of regression coefficients...\n")    
-    Gmodel     <- c(varG = var(d$G))
-    d$schoolid <- factor(d$schoolid)
-    d$bpid     <- factor(d$bpid)
+    if(!mean_supplied){
+        cat("Computing OLS estimates of regression coefficients...\n")    
+        Gmodel     <- c(varG = var(d$G))
+        d$schoolid <- factor(d$schoolid)
+        d$bpid     <- factor(d$bpid)
 
-    ## first fit school FE only, no blocks, for R^2 calculation letting schools
-    ## have as much as possible
-    d$muhat <- ave(d$G, d$school)
-    .e      <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - length(unique(d$school)))
-    Gmodel["Rsq_sfe"] <- 1.0 - (.e / Gmodel["varG"])
+        ## first fit school FE only, no blocks, for R^2 calculation letting schools
+        ## have as much as possible
+        d$muhat <- ave(d$G, d$school)
+        .e      <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - length(unique(d$school)))
+        Gmodel["Rsq_sfe"] <- 1.0 - (.e / Gmodel["varG"])
 
-    ## now fit the actual model with school FE and block/pattern means
-    .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
-    .X      <- sparse.model.matrix(~schoolid - 1 + bpid, data=d, contrasts.arg=list(schoolid="contr.treatment",bpid="contr.sum"))
-    stopifnot(all(.X@x %in% c(-1,0,1)) && (ncol(.X) == .mdf))
-    stopifnot(length(grep("schoolid",colnames(.X))) == length(unique(d$school)))
-    stopifnot(length(grep("bpid",    colnames(.X))) == length(unique(d$bpid))-1)
-    .xpx    <- crossprod(.X)
-    .xpy    <- crossprod(.X, d$G)
-    .bhat   <- solve(.xpx, .xpy)
-    d$muhat <- as.vector(.X %*% .bhat)
-    stopifnot(max(abs(tapply(d$muhat, d$school, mean) - tapply(d$G, d$school, mean))) < 1e-6)
-    stopifnot(max(abs(tapply(d$muhat, d$bpid,   mean) - tapply(d$G, d$bpid,   mean))) < 1e-6)
+        ## now fit the actual model with school FE and block/pattern means
+        .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
+        .X      <- sparse.model.matrix(~schoolid - 1 + bpid, data=d, contrasts.arg=list(schoolid="contr.treatment",bpid="contr.sum"))
+        stopifnot(all(.X@x %in% c(-1,0,1)) && (ncol(.X) == .mdf))
+        stopifnot(length(grep("schoolid",colnames(.X))) == length(unique(d$school)))
+        stopifnot(length(grep("bpid",    colnames(.X))) == length(unique(d$bpid))-1)
+        .xpx    <- crossprod(.X)
+        .xpy    <- crossprod(.X, d$G)
+        .bhat   <- solve(.xpx, .xpy)
+        d$muhat <- as.vector(.X %*% .bhat)
+        stopifnot(max(abs(tapply(d$muhat, d$school, mean) - tapply(d$G, d$school, mean))) < 1e-6)
+        stopifnot(max(abs(tapply(d$muhat, d$bpid,   mean) - tapply(d$G, d$bpid,   mean))) < 1e-6)
 
-    ## add estimated means based on block/pattern FE but not including the school fixed effects,
-    ## which will be needed later for estimating
-    wh         <- grep("bpid", colnames(.X))
-    d$muhat_bp <- as.vector(.X[,wh] %*% .bhat[wh])
-    .bhat      <- as.vector(.bhat)
-    names(.bhat) <- colnames(.X)
+        ## add estimated means based on block/pattern FE but not including the school fixed effects,
+        ## which will be needed later for estimating
+        wh         <- grep("bpid", colnames(.X))
+        d$muhat_bp <- as.vector(.X[,wh] %*% .bhat[wh])
+        .bhat      <- as.vector(.bhat)
+        names(.bhat) <- colnames(.X)
+        
+        ## put schoolFE on dsch
+        tmp <- d[!duplicated(d$school),c("school","schoolid")]
+        tmp$schoolFE <- .bhat[paste0("schoolid",tmp$schoolid)]
+        stopifnot( !any(is.na(tmp$schoolFE)) )
+        for(s in 1:length(dsch)){
+            dsch[[s]]$schoolFE <- tmp$schoolFE[which(tmp$school == dsch[[s]]$school)]
+        }
 
-    ## put schoolFE on dsch
-    tmp <- d[!duplicated(d$school),c("school","schoolid")]
-    tmp$schoolFE <- .bhat[paste0("schoolid",tmp$schoolid)]
-    stopifnot( !any(is.na(tmp$schoolFE)) )
-    for(s in 1:length(dsch)){
-        dsch[[s]]$schoolFE <- tmp$schoolFE[which(tmp$school == dsch[[s]]$school)]
-    }
-
-    rm(.X,.xpx,.xpy); gc()
-    Gmodel["varE"] <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - .mdf)
-    Gmodel["Rsq_tot"]  <- 1.0 - (Gmodel["varE"]/Gmodel["varG"])
+        rm(.X,.xpx,.xpy); gc()
+        Gmodel["varE"] <- sum( (d$G - d$muhat)^2 ) / (nrow(d) - .mdf)
+        Gmodel["Rsq_tot"]  <- 1.0 - (Gmodel["varE"]/Gmodel["varG"])
     
-    ## cat("CHECKING MATRIX CALCS")
-    ## d$muhat_chk <- fitted(lm(G ~ as.factor(school) + bpid, data=d))
-    ## print(max(abs(d$muhat - d$muhat_chk)))
-    ## d$muhat_chk <- NULL
+        ## cat("CHECKING MATRIX CALCS")
+        ## d$muhat_chk <- fitted(lm(G ~ as.factor(school) + bpid, data=d))
+        ## print(max(abs(d$muhat - d$muhat_chk)))
+        ## d$muhat_chk <- NULL
+    } else {
+        cat("Bypassing mean estimation...\n")
+        Gmodel <- NULL
+        .bhat  <- NULL
+    }
     
     ## ############################################################
     ## calculate and check various school*block aggregates, which will be used
@@ -573,7 +608,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## ############################################################
     cat("Computing and checking school*block aggregate measures...\n")
     d$Y        <- ave(d$G,              d$school, d$block)
-    d$Ytilde   <- ave(d$G - d$muhat_bp, d$school, d$block)
+    ## this is just a placeholder to minimize later branching
+    if(!mean_supplied){
+        d$Ytilde   <- ave(d$G - d$muhat_bp, d$school, d$block)
+    } else {
+        d$Ytilde   <- 0.0
+    }
     d$nsb      <- ave(rep(1,nrow(d)),   d$school, d$block, FUN=sum)
     
     tmp        <- d[!duplicated(paste(d$school, d$block)), c("school","grade","year","subject","block","blockid","nsb","muhat","Y","Ytilde")]
@@ -584,8 +624,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     for(s in 1:length(dsch)){
         dsch[[s]]$tab <- tmp[[s]]
     }
-    stopifnot(max(abs(sapply(dsch, function(x){ x$schoolFE - weighted.mean(x$tab$Ytilde, w = x$tab$nsb) }))) < Gmodel["varG"]*1e-10)
+
     stopifnot(all(unlist(lapply(dsch, function(x){ diag(x$N)[x$tab$blockid] - x$tab$nsb })) == 0))
+    if(!mean_supplied){
+        stopifnot(max(abs(sapply(dsch, function(x){ x$schoolFE - weighted.mean(x$tab$Ytilde, w = x$tab$nsb) }))) < Gmodel["varG"]*1e-10)
+    }
 
     ## ########################################################
     ## compute provisional variance/covariance matrix "vU" of errors in school-level
@@ -642,7 +685,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
         ## compute school contribution to adj_observed_moments, restricting to
         ## schools with 2+ blocks
-        if(x$nblock > 1){
+        if(!vX_supplied && (x$nblock > 1)){
             Pis <- sparseMatrix(i=1,j=1,x=0, dims=c(B,B))
             for(.b in b){
                 Pis[.b,] <- x$pis
@@ -702,42 +745,41 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## NOTE: for this step, the use of sparse matrices ended up being notably slower than
             ## standard matrices, so we just use standard matrices
 
-            if(!vX_supplied){
-                Cs     <- (Is - Pis) %*% A
-                ## Zs <- sparseMatrix(i=1,j=1,x=0,dims=c(B*(B+1)/2, (B-1)*B/2))
-                Zs <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
+            Cs     <- (Is - Pis) %*% A
+            ## Zs <- sparseMatrix(i=1,j=1,x=0,dims=c(B*(B+1)/2, (B-1)*B/2))
+            Zs <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
                 
-                ## t1 <- proc.time()
-                wh <- 0
-                for(j in 1:B){
-                    for(i in j:B){
-                        wh      <- wh + 1
-                        ## SLOW
-                        ## Zs[wh,] <- (as(Cs[i,pos1],"sparseVector") * as(Cs[j,pos2],"sparseVector")) + (as(Cs[i,pos2],"sparseVector") * as(Cs[j,pos1],"sparseVector"))
-                        ##
-                        ## proceed only if we can get a nonzero result for Zs[wh,]
-                        if( (i %in% b) && (j %in% b) ){ 
-                            Zs[wh,] <- (Cs[i,pos1]*Cs[j,pos2]) + (Cs[i,pos2]*Cs[j,pos1])
-                        }
+            ## t1 <- proc.time()
+            wh <- 0
+            for(j in 1:B){
+                for(i in j:B){
+                    wh      <- wh + 1
+                    ## SLOW
+                    ## Zs[wh,] <- (as(Cs[i,pos1],"sparseVector") * as(Cs[j,pos2],"sparseVector")) + (as(Cs[i,pos2],"sparseVector") * as(Cs[j,pos1],"sparseVector"))
+                    ##
+                    ## proceed only if we can get a nonzero result for Zs[wh,]
+                    if( (i %in% b) && (j %in% b) ){ 
+                        Zs[wh,] <- (Cs[i,pos1]*Cs[j,pos2]) + (Cs[i,pos2]*Cs[j,pos1])
                     }
                 }
-                Zs[,posd] <- Zs[,posd] / 2.0
-                ## t2 <- proc.time()
-                ## print(t2["elapsed"] -t1["elapsed"])
-                vX_Z <- vX_Z + as(Zs,"sparseMatrix")
-            
-                ## CHECK: does Zs do what is intended?
-                ##
-                ## .V      <- matrix(rnorm(B-1,sd=2),nrow=(B-1),ncol=1)
-                ## .V      <- .V %*% t(.V)
-                ## .Vl     <- .V[lower.tri(.V,diag=TRUE)]
-                ## .target <- (Cs %*% .V %*% t(Cs))
-                ## .target <- .target[lower.tri(.target,diag=TRUE)]
-                ## print(max(abs((Zs %*% .Vl) - .target)))
             }
+            Zs[,posd] <- Zs[,posd] / 2.0
+            ## t2 <- proc.time()
+            ## print(t2["elapsed"] -t1["elapsed"])
+            vX_Z <- vX_Z + as(Zs,"sparseMatrix")
+            
+            ## CHECK: does Zs do what is intended?
+            ##
+            ## .V      <- matrix(rnorm(B-1,sd=2),nrow=(B-1),ncol=1)
+            ## .V      <- .V %*% t(.V)
+            ## .Vl     <- .V[lower.tri(.V,diag=TRUE)]
+            ## .target <- (Cs %*% .V %*% t(Cs))
+            ## .target <- .target[lower.tri(.target,diag=TRUE)]
+            ## print(max(abs((Zs %*% .Vl) - .target)))
         }
+        
         dsch[[s]] <- x
-        if(!quietly){
+        if(!control$quietly){
             cat(paste("school:",s,"\n"))
         }
     }
