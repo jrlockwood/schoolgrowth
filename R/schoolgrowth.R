@@ -607,12 +607,17 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## for estimating vX and ultimately for doing the BLP calculation
     ## ############################################################
     cat("Computing and checking school*block aggregate measures...\n")
-    d$Y        <- ave(d$G,              d$school, d$block)
-    ## this is just a placeholder to minimize later branching
+    d$Y        <- ave(d$G, d$school, d$block)
+
     if(!mean_supplied){
         d$Ytilde   <- ave(d$G - d$muhat_bp, d$school, d$block)
     } else {
+        ## this is just a placeholder to minimize later branching
         d$Ytilde   <- 0.0
+        ## key step: if mean_supplied, it generally will vary across students within school*blocks
+        ## due to patterns, and we need to average it to the school*block level to get the implied
+        ## school*block mean
+        d$muhat <- ave(d$muhat, d$school, d$block)
     }
     d$nsb      <- ave(rep(1,nrow(d)),   d$school, d$block, FUN=sum)
     
