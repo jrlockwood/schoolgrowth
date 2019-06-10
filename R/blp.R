@@ -1,4 +1,4 @@
-blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06){
+blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06, checkMSE=FALSE){
     ## X has E[X] = mu, var[X] = SigmaX
     ## Y = X + U where E[U|X] = 0, var[U] = SigmaU
     ## compute BLP of lambda'X from Y, along with MSE and PRMSE
@@ -6,7 +6,7 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06){
     ## algebra:
     ## Q = SigmaX(SigmaX + SigmaU)^{-1}
     ## BLP = lambda'[ (I-Q)mu + QY ]
-    ## MSE = tr(lambda lambda' (Q SigmaU Q' + (I-Q)SigmaX(I-Q)'))
+    ## MSE = tr(lambda lambda' (Q SigmaU Q' + (I-Q)SigmaX(I-Q)')) = lambda' (I-Q)SigmaX lambda
     ##
     ## NOTE: all eigenvalues of (SigmaX + SigmaU) that are less than eig.tol*max eigenvalue
     ## are zeroed, and the Moore-Penrose inverse is used to get coefficients for BLP.
@@ -43,11 +43,13 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06){
     }
     IminusQ    <- diag(p) - Q
     est.blp    <- as.vector(t(lambda) %*% ( (IminusQ %*% mu) + (Q %*% Y) ))
-    part       <- (Q %*% SigmaU %*% t(Q)) + (IminusQ %*% SigmaX %*% t(IminusQ))
-    mse.blp    <- sum(diag( (lambda %*% t(lambda)) %*% part))
-    ## check alt MSE calc:
-    mse.blp2   <- as.vector(t(lambda) %*% (SigmaX - (Q %*% SigmaX)) %*% lambda)
-    stopifnot(abs(mse.blp - mse.blp2) < 1e-10)
+    mse.blp    <- as.vector(t(lambda) %*% (IminusQ %*% SigmaX) %*% lambda)
+
+    if(checkMSE){
+        part       <- (Q %*% SigmaU %*% t(Q)) + (IminusQ %*% SigmaX %*% t(IminusQ))
+        mse.blp2    <- sum(diag( (lambda %*% t(lambda)) %*% part))
+        stopifnot(abs(mse.blp - mse.blp2) < 1e-10)
+    }
 
     ## PRMSE of BLP relative to assigning everyone the mean lambda'mu
     mse.null   <- as.vector(t(lambda) %*% SigmaX %*% lambda)
@@ -71,12 +73,12 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06){
 ## SigmaX  <- diag(sdx) %*% CS(0.3,6) %*% diag(sdx)
 ## sdu     <- sqrt(c(0.1, 0.1, 0.15, 0.05, 0.10, 0.15))
 ## SigmaU  <- diag(sdu) %*% CS(0.1,6) %*% diag(sdu)
-## blp(Y, lambda, mu, SigmaX, SigmaU)
-
+## blp(Y, lambda, mu, SigmaX, SigmaU, checkMSE=TRUE)
+##
 ## case where eigenvalues get adjusted
 ##
 ## e <- eigen(SigmaX)
 ## e$values[which(e$values < 0.20)] <- -0.10
 ## SigmaX <- e$vectors %*% diag(e$values) %*% t(e$vectors)
-## blp(Y, lambda, mu, SigmaX, SigmaU)
+## blp(Y, lambda, mu, SigmaX, SigmaU, checkMSE=TRUE)
 
