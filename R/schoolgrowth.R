@@ -665,16 +665,26 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## there are B(B+1)/2 rows, corresponding to the column-major lower triangle
     ## of the observed moments, and there are (B-1)B/2 columns, corresponding to the
     ## column-major lower triangle of vX*, the (B-1)x(B-1) full-rank covariance matrix.
-    vX_Z <- sparseMatrix(i=1,j=1,x=0,dims=c(B*(B+1)/2, (B-1)*B/2))
-
+    ##
+    ## NOTE: sparse tended to be slower here so we make it dense, which is fine
+    ## because the matrix actually ends up dense.  vX_Z will accumulate across
+    ## schools and each school's contribution will be initialized to Zs0.
+    vX_Z <- Zs0  <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
+    
     ## create vectors that will be used to mash matrix elements together as needed.
     ## posd is vector of diagonal positions for (B-1)x(B-1) matrix lower triangle.
     pos1 <- unlist(lapply(1:(B-1), function(i){i:(B-1)}))
     pos2 <- unlist(lapply(1:(B-1), function(i){rep(i,B-i)}))
     posd <- lapply((B-1):1, function(i){ c(1L,rep(0L,i-1)) })
     posd <- which(unlist(posd) > 0L)
-        
+
+    ## create a matrix to hold positions of (i,j) element of (BxB) symmetric
+    ## matrix stored as column-major lower triangle
+    posB <- matrix(0,ncol=B,nrow=B)
+    posB[lower.tri(posB, diag=TRUE)] <- 1:B2
+    
     ## loop over schools
+    ## t1 <- proc.time()    
     for(s in 1:length(dsch)){
         x        <- dsch[[s]]
         stopifnot(all(x$oblocks == x$tab$blockid))
@@ -749,29 +759,24 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ##
             ## NOTE: for this step, the use of sparse matrices ended up being notably slower than
             ## standard matrices, so we just use standard matrices
-
-            Cs     <- (Is - Pis) %*% A
-            ## Zs <- sparseMatrix(i=1,j=1,x=0,dims=c(B*(B+1)/2, (B-1)*B/2))
-            Zs <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
-                
-            ## t1 <- proc.time()
-            wh <- 0
-            for(j in 1:B){
-                for(i in j:B){
-                    wh      <- wh + 1
-                    ## SLOW
-                    ## Zs[wh,] <- (as(Cs[i,pos1],"sparseVector") * as(Cs[j,pos2],"sparseVector")) + (as(Cs[i,pos2],"sparseVector") * as(Cs[j,pos1],"sparseVector"))
-                    ##
-                    ## proceed only if we can get a nonzero result for Zs[wh,]
-                    if( (i %in% b) && (j %in% b) ){ 
-                        Zs[wh,] <- (Cs[i,pos1]*Cs[j,pos2]) + (Cs[i,pos2]*Cs[j,pos1])
-                    }
+            ##
+            ## NOTE: need to loop over only observed block pairs for this school because other
+            ## contributions are zero
+            Cs  <- as.matrix((Is - Pis) %*% A)
+            Zs  <- Zs0
+            
+            for(j in 1:length(b)){
+                for(i in j:length(b)){
+                    Zs[posB[b[i],b[j]],] <- (Cs[b[i],pos1]*Cs[b[j],pos2]) + (Cs[b[i],pos2]*Cs[b[j],pos1])
                 }
             }
+            ## ALT, TOO SLOW
+            ## H <- as.matrix(subset(dblockpairs, (blockidi %in% b) | (blockidj %in% b), select=c("index","blockidi","blockidj")))
+            ## for(h in 1:nrow(H)){
+            ##     Zs[H[h,1],] <- (Cs[H[h,2],pos1]*Cs[H[h,3],pos2]) + (Cs[H[h,2],pos2]*Cs[H[h,3],pos1])
+            ## }
             Zs[,posd] <- Zs[,posd] / 2.0
-            ## t2 <- proc.time()
-            ## print(t2["elapsed"] -t1["elapsed"])
-            vX_Z <- vX_Z + as(Zs,"sparseMatrix")
+            vX_Z <- vX_Z + Zs
             
             ## CHECK: does Zs do what is intended?
             ##
@@ -788,6 +793,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             cat(paste("school:",s,"\n"))
         }
     }
+    ## t2 <- proc.time()
+    ## print(t2["elapsed"] -t1["elapsed"])
 
     ## #########################################################
     ## compute WLS estimates of vX* elements, force to PSD, and
