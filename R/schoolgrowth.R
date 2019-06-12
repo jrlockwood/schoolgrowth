@@ -684,7 +684,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     posB[lower.tri(posB, diag=TRUE)] <- 1:B2
     
     ## loop over schools
-    ## t1 <- proc.time()    
+    t1 <- proc.time()    
     for(s in 1:length(dsch)){
         x        <- dsch[[s]]
         stopifnot(all(x$oblocks == x$tab$blockid))
@@ -793,8 +793,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             cat(paste("school:",s,"\n"))
         }
     }
-    ## t2 <- proc.time()
-    ## print(t2["elapsed"] -t1["elapsed"])
+    t2 <- proc.time()
+    print(t2["elapsed"] -t1["elapsed"])
 
     ## #########################################################
     ## compute WLS estimates of vX* elements, force to PSD, and
@@ -860,6 +860,66 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
     }
 
+
+
+
+
+
+
+
+
+
+
+
+    
+    
+
+
+    ## #############################################
+    ## FLAG DEVEL: HENDERSON SOLUTION USING SCHOOL*BLOCK AGGREGATES
+    ##
+    ## NOTE: "Z" matrix in standard notation is I here because Y is
+    ##        directly additive in the school*block random effects
+    ## #############################################
+    ## stopifnot(all(sapply(dsch, function(x){ x$nblock == nrow(x$tab)})))
+    ## N <- sum(sapply(dsch, function(x){ x$nblock }))
+    ## 
+    ## ## Y
+    ## Y <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y })))
+    ## stopifnot(length(Y) == N)    
+    ## ## CHECK
+    ## ## tmp        <- d[!duplicated(paste(d$school, d$block)),c("school","blockid","Y")]
+    ## ## tmp        <- tmp[order(tmp$school, tmp$blockid),]
+    ## ## stopifnot(max(abs(tmp$Y - Y))==0)
+    ## 
+    ## ## G^{-1}
+    ## Ginv <- ginv(as.matrix(vX), tol=control$eig.tol)
+    ## stopifnot(max(abs(forceSymmetric(Ginv) - Ginv)) < 1e-12)
+    ## Ginv <- as(forceSymmetric(Ginv), "dsCMatrix")
+    ## Ginv <- bdiag(lapply(dsch, function(x){ Ginv[x$oblocks,x$oblocks,drop=FALSE] }))
+    ## stopifnot( (class(Ginv) == "dsCMatrix") && (nrow(Ginv) == N))
+    ## 
+    ## ## R^{-1} (ignoring cross-school correlations due to students switching schools)
+    ## .f <- function(x){
+    ##     tmp <- ginv(as.matrix(x$vU[x$oblocks, x$oblocks, drop=FALSE]))
+    ##     stopifnot(max(abs(forceSymmetric(tmp) - tmp)) < 1e-12)
+    ##     as(forceSymmetric(tmp), "dsCMatrix")
+    ## }
+    ## Rinv <- bdiag(lapply(dsch, .f))
+    ## stopifnot( (class(Rinv) == "dsCMatrix") && (nrow(Rinv) == N))
+
+
+
+    
+    
+
+
+
+
+    
+    
+
+    
     ## #############################################
     ## BLP calculation
     ## #############################################

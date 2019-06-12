@@ -37,7 +37,7 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06, checkMSE=FALSE){
     ## computations
     est.direct <- as.vector(t(lambda) %*% Y)
     mse.direct <- as.vector(t(lambda) %*% SigmaU %*% lambda)
-    Q          <- SigmaX %*% ginv(SigmaXpU)
+    Q          <- SigmaX %*% ginv(SigmaXpU, tol = eig.tol)
     if(max(abs( (Q %*% SigmaXpU) - SigmaX)) > 1e-06){
         print("warning in blp: G-inverse solution to BLP coefficients only approximate")
     }
