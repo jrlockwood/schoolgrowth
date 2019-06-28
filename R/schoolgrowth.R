@@ -102,20 +102,25 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     ## make sure that we don't have fewer observations than control$pattern_nmin
     if(nrow(d) < control$pattern_nmin){
-        stop("control$pattern_nmin is fewer than the total number of observations")
+        stop("control$pattern_nmin is larger than the total number of observations")
     }
     
     ## create block-level dataset "dblock" providing unique combinations of year*grade*subject
     ## and their block labels and IDs
     ## NOTE: don't use unique() due to excessive RAM usage.
-    d$block    <- factor(paste("t",d$year,"_g",d$grade,"_b",d$subject,sep=""))
-    d$blockid  <- as.integer(d$block)
-    dblock     <- d[which(!duplicated(d$block)),c("year","grade","subject","block","blockid")]
-    dblock     <- dblock[order(dblock$blockid),]
-    allblocks  <- dblock$block
-    B          <- length(allblocks)
-    B2         <- B*(B+1)/2
-    rownames(dblock) <- 1:nrow(dblock)
+    d$block     <- factor(paste("t",d$year,"_g",d$grade,"_b",d$subject,sep=""))
+    d$blockid   <- as.integer(d$block)
+    dblock      <- d[which(!duplicated(d$block)),c("year","grade","subject","block","blockid")]
+    dblock      <- dblock[order(dblock$blockid),]
+    B           <- nrow(dblock)
+    B2          <- B*(B+1)/2
+    .blocknames <- as.character(dblock$block)
+    rownames(dblock) <- 1:B
+
+    ## sort data by school, blockid and student, which will faciliate bookkeeping later
+    ## during the second-stage mixed-model estimation
+    d <- d[order(d$school, d$blockid, d$stuid),]
+    d$index <- as.integer(1:nrow(d))
     
     if(B <= 2){
         stop("Current function requires at least three blocks")
@@ -133,11 +138,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("vE cannot contain missing values")
         }
         
-        if( !((nrow(vE) == B) && all(rownames(vE) == allblocks)) ) {
+        if( !((nrow(vE) == B) && all(rownames(vE) == .blocknames)) ) {
             stop("vE rows not specified properly")
         }
         
-        if( !((ncol(vE) == B) && all(colnames(vE) == allblocks)) ) {
+        if( !((ncol(vE) == B) && all(colnames(vE) == .blocknames)) ) {
             stop("vE columns not specified properly")
         }
 
@@ -158,11 +163,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("vX cannot contain missing values")
         }
         
-        if( !((nrow(vX) == B) && all(rownames(vX) == allblocks)) ) {
+        if( !((nrow(vX) == B) && all(rownames(vX) == .blocknames)) ) {
             stop("vX rows not specified properly")
         }
         
-        if( !((ncol(vX) == B) && all(colnames(vX) == allblocks)) ) {
+        if( !((ncol(vX) == B) && all(colnames(vX) == .blocknames)) ) {
             stop("vX columns not specified properly")
         }
 
@@ -318,7 +323,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## need them in the correct positions
     ##
     ## NOTE: we order the elements of dblockpairs to fill the lower triangle
-    ## of a BxB symmetric matrix by column
+    ## of a BxB symmetric matrix using column-major order
     ## #################################################################
     dblockpairs <- data.frame(index = 1:B2, blockidi = 0L, blockidj = 0L)
     wh <- 0
@@ -337,11 +342,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## ##################################################################
     ## create "dsch" master list that will hold all school-level information.
     ## ##################################################################
-    allschools  <- sort(unique(d$school))
-    dsch        <- vector(length(allschools), mode="list")
-    names(dsch) <- allschools
+    tmp  <- sort(unique(d$school))
+    dsch <- vector(length(tmp), mode="list")
+    names(dsch) <- tmp
     for(s in 1:length(dsch)){
-        dsch[[s]]$school <- allschools[s]
+        dsch[[s]]$school <- tmp[s]
     }
     
     ## ###################################################################
@@ -351,7 +356,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## ###################################################################
     cat("Computing counts of schools in each block pair...\n")
     .tab <- table(d$school, d$blockid)
-    stopifnot(all(colnames(.tab) == 1:B) && all(rownames(.tab) == allschools))
+    stopifnot(all(colnames(.tab) == 1:B) && all(rownames(.tab) == names(dsch)))
     dblockpairs$nsch   <- 0L    
     dblockpairs$vX_est <- TRUE
     
@@ -403,7 +408,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## vE_est as indicator of whether there are a sufficient number of
     ## students in that block pair to estimate the corresponding error covariance.
     ## ##################################################################
-    stupat           <- table(d$stuid, d$blockid)
+    stupat             <- table(d$stuid, d$blockid)
     stopifnot( (all(colnames(stupat) == as.character(1:B))) && (nrow(stupat) == length(unique(d$stuid))) )
     dblockpairs$nstu   <- 0L
     dblockpairs$vE_est <- TRUE
@@ -421,7 +426,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     stupat           <- data.frame(stuid = rownames(stupat), pattern = apply(as.matrix(stupat), 1, paste, collapse=""), stringsAsFactors=FALSE)
     stupat$stuid     <- as.character(stupat$stuid)
-    stupat$pcount    <- ave(rep(1,nrow(stupat)), stupat$pattern, FUN=sum)    
+    stupat$pcount    <- ave(rep(1,nrow(stupat)), stupat$pattern, FUN=sum)
     cat(paste("Number of patterns before collapsing:",length(unique(stupat$pattern)),"\n"))
     
     ## apply collapsing rule:
@@ -551,7 +556,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!mean_supplied){
         cat("Computing OLS estimates of regression coefficients...\n")    
         Gmodel     <- c(varG = var(d$G))
-        d$schoolid <- factor(d$schoolid)
+        d$schoolid <- factor(d$school)
         d$bpid     <- factor(d$bpid)
 
         ## first fit school FE only, no blocks, for R^2 calculation letting schools
@@ -575,9 +580,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
         ## add estimated means based on block/pattern FE but not including the school fixed effects,
         ## which will be needed later for estimating
-        wh         <- grep("bpid", colnames(.X))
-        d$muhat_bp <- as.vector(.X[,wh] %*% .bhat[wh])
-        .bhat      <- as.vector(.bhat)
+        wh           <- grep("bpid", colnames(.X))
+        d$muhat_bp   <- as.vector(.X[,wh] %*% .bhat[wh])
+        .bhat        <- as.vector(.bhat)
         names(.bhat) <- colnames(.X)
         
         ## put schoolFE on dsch
@@ -650,7 +655,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!vE_supplied){
         tmp <- subset(dblockpairs, vE_est)
         vE  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$vE, dims=c(B,B), symmetric=TRUE)
-        rownames(vE) <- colnames(vE) <- allblocks
+        rownames(vE) <- colnames(vE) <- .blocknames
     }
 
     ## create matrix to implement sum-to-zero constraints
@@ -795,6 +800,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     t2 <- proc.time()
     print(t2["elapsed"] -t1["elapsed"])
+    rm(Zs, Zs0); gc()
 
     ## #########################################################
     ## compute WLS estimates of vX* elements, force to PSD, and
@@ -826,7 +832,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         vX     <- A %*% vXstar.adj %*% t(A)
         dblockpairs$vX <- vX[lower.tri(vX, diag=TRUE)]
         vX     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$vX, dims=c(B,B), symmetric=TRUE)
-        rownames(vX) <- colnames(vX) <- allblocks
+        rownames(vX) <- colnames(vX) <- .blocknames
         rm(.Y,.W,.xpx,.xpy,vXstar,vXstar.adj)        
     } else {
         dblockpairs$vX <- vX[lower.tri(vX, diag=TRUE)]
@@ -846,7 +852,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             .vE <- vE
             tmp <- nearPD2(vE, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)$mat
             vE  <- as(tmp,"sparseMatrix")
-            rownames(vE) <- colnames(vE) <- allblocks
+            rownames(vE) <- colnames(vE) <- .blocknames
             cat(paste0("Smallest eigenvalue of adjusted vE: ",min(eigen(vE)$values),"\n"))
             cat("Summary of differences between original and adjusted vE:\n")
             print(summary(c(as.matrix(vE - .vE))))
@@ -860,70 +866,113 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
     }
 
-
-
-
-
-
-
-
-
-
-
-
-    
-    
-
-
     ## #############################################
-    ## FLAG DEVEL: HENDERSON SOLUTION USING SCHOOL*BLOCK AGGREGATES
+    ## get GLS estimator of regression coefficients, and BLPs of random effects,
+    ## using brute-force estimation with sparse matrices
     ##
     ## NOTE: "Z" matrix in standard notation is I here because Y is
-    ##        directly additive in the school*block random effects
+    ## directly additive in the school*block random effects
+    ##
+    ## NOTE: I tried the Henderson mixed model equations but found cases
+    ## where this disagreed with the brute-force solution, possibly because
+    ## the HMME require R^{-1} and G^{-1}, neither of which necessarily
+    ## exist here, and it's possible the Schur results that the HMME rely
+    ## on are not valid unless R and G are invertible.
     ## #############################################
-    ## stopifnot(all(sapply(dsch, function(x){ x$nblock == nrow(x$tab)})))
-    ## N <- sum(sapply(dsch, function(x){ x$nblock }))
-    ## 
-    ## ## Y
-    ## Y <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y })))
-    ## stopifnot(length(Y) == N)    
-    ## ## CHECK
-    ## ## tmp        <- d[!duplicated(paste(d$school, d$block)),c("school","blockid","Y")]
-    ## ## tmp        <- tmp[order(tmp$school, tmp$blockid),]
-    ## ## stopifnot(max(abs(tmp$Y - Y))==0)
-    ## 
-    ## ## G^{-1}
-    ## Ginv <- ginv(as.matrix(vX), tol=control$eig.tol)
-    ## stopifnot(max(abs(forceSymmetric(Ginv) - Ginv)) < 1e-12)
-    ## Ginv <- as(forceSymmetric(Ginv), "dsCMatrix")
-    ## Ginv <- bdiag(lapply(dsch, function(x){ Ginv[x$oblocks,x$oblocks,drop=FALSE] }))
-    ## stopifnot( (class(Ginv) == "dsCMatrix") && (nrow(Ginv) == N))
-    ## 
-    ## ## R^{-1} (ignoring cross-school correlations due to students switching schools)
-    ## .f <- function(x){
-    ##     tmp <- ginv(as.matrix(x$vU[x$oblocks, x$oblocks, drop=FALSE]))
-    ##     stopifnot(max(abs(forceSymmetric(tmp) - tmp)) < 1e-12)
-    ##     as(forceSymmetric(tmp), "dsCMatrix")
-    ## }
-    ## Rinv <- bdiag(lapply(dsch, .f))
-    ## stopifnot( (class(Rinv) == "dsCMatrix") && (nrow(Rinv) == N))
+    if(!mean_supplied){
+        cat("Computing GLS estimator and raw BLPs...\n")
+        
+        stopifnot(all(sapply(dsch, function(x){ x$nblock == nrow(x$tab)})))
+        N <- sum(sapply(dsch, function(x){ x$nblock }))
+        d$sbid <- paste(d$school, gsub(" ","0",formatC(as.character(d$blockid))), sep="_")
+        stopifnot(length(unique(d$sbid)) == N)
+        
+        ## "Y"
+        Y <- matrix(as.vector(unlist(lapply(dsch, function(x){ x$tab$Y }))), ncol=1)
+        stopifnot( (nrow(Y) == N) && all(d$Y[!duplicated(d$sbid)] == Y) )
 
+        ## "X" design matrix at school*block level, which has columns for school FE,
+        ## and then columns for block*pattern means with sum-to-zero constraints
+        tmp  <- d[!duplicated(d$sbid),"schoolid",drop=FALSE]
+        .X   <- sparse.model.matrix(~schoolid - 1, data=tmp, contrasts.arg=list(schoolid="contr.treatment"))
+        stopifnot( (nrow(.X) == N) && all(gsub("schoolid","",colnames(.X)) == unique(d$schoolid)) )
+        
+        .X2    <- table(d$sbid, d$bpid)
+        stopifnot( (nrow(.X2) == N) && all(rownames(.X2) == unique(d$sbid)) )
+        .X2 <- t(apply(as.matrix(.X2), 1, function(x){
+            .n <- sum(x)
+            x[-length(x)] <- x[-length(x)] - x[length(x)]
+            x[-length(x)] / .n
+        }))
+        .X2 <- as(.X2, "dgCMatrix")
+        .X  <- cbind(.X,.X2)
+        stopifnot( (nrow(.X) == N) && (ncol(.X) == .mdf) && (class(.X) == "dgCMatrix") )
+        rm(.X2); gc()
 
+        ## "G"
+        G    <- bdiag(lapply(dsch, function(x){
+            .b <- x$oblocks
+            as(vX[.b,.b,drop=FALSE], "symmetricMatrix")
+        }))
 
-    
-    
+        ## "R"
+        R    <- bdiag(lapply(dsch, function(x){
+            .b <- x$oblocks
+            as(x$vU[.b,.b,drop=FALSE], "symmetricMatrix")
+        }))
 
+        ## V^{-1}
+        Vinv <- bdiag(lapply(dsch, function(x){
+            .b <- x$oblocks
+            as(solve(vX[.b,.b,drop=FALSE] + x$vU[.b,.b,drop=FALSE]), "symmetricMatrix")
+        }))
+        
+        ## brute force using expression for GLS estimator and BLPs of random
+        ## effects at the school*block level
+        .Xp_Vinv    <- crossprod(.X, Vinv)
+        .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
+        .bgls       <- solve(.Xp_Vinv_X, (.Xp_Vinv %*% Y))
+        .Xbgls      <- .X %*% .bgls
+        .blp        <- as.vector(.Xbgls + (G %*% Vinv %*% (Y - .Xbgls)))
+        bhat        <- as.vector(.bgls)
+        names(bhat) <- colnames(.X)
 
+        ## summaries of BLUPs
+        cat(paste("(MM) range of Xb+u:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
+        cat(paste("(MM) cor(Y,Xb+u)  :",round(as.vector(cor(.blp, Y)),digits=4),"\n"))
 
+        ## MSE estimators
+        ##
+        ## NOTE: using approximation school-by-school because alternatives eat too much RAM
+        ## The MSE treats block*pattern FE as known and accounts for uncertainty in school FE
+        cat("Computing MSE estimates of raw BLPs by school (may be slow)...\n")
+        .pos <- 0
+        for(s in 1:length(dsch)){
+            x    <- dsch[[s]]
+            nb   <- x$nblock
+            .i   <- (.pos+1):(.pos+nb)
+            .pos <- max(.i)
 
-    
-    
+            x$tab$blp <- .blp[.i]
 
+            .vinv <- Vinv[.i,.i,drop=F]
+            .G    <- G[.i,.i,drop=F]
+            H     <- (matrix(1.0, ncol=nb, nrow=nb) %*% .vinv) / sum(.vinv)
+            ImH   <- diag(nb) - H
+            Q     <- H + ((.G %*% .vinv) %*% ImH) ## NOTE: rowsums==1
+            ImQ   <- diag(nb) - Q
+
+            x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$vU[x$oblocks,x$oblocks,drop=F] %*% t(Q))
+            dsch[[s]] <- x
+        }
+        stopifnot(.pos == N)
+        rm(.blp,Y,R,.Xbgls,G,Vinv,.X,.Xp_Vinv_X,.Xp_Vinv); gc()
+    }
     
     ## #############################################
-    ## BLP calculation
+    ## BLP calculation for weighted composite
     ## #############################################
-    cat("Computing smoothed school measures...\n")
+    cat("Computing composite BLPs and MSE estimates...\n")
     for(s in 1:length(dsch)){
         x <- dsch[[s]]
         b <- x$oblocks
@@ -959,27 +1008,42 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
 
             ## get BLP
-            tmp <- blp(x$tab$Y, lambda, x$tab$muhat, as.matrix(vX[b,b,drop=F]), as.matrix(x$vU[b,b,drop=F]), eig.tol=control$eig.tol)
-
+            ## FLAG BYPASS blp() function if we are using GLS
+            if(mean_supplied){
+                tmp <- blp(x$tab$Y, lambda, x$tab$muhat, as.matrix(vX[b,b,drop=F]), as.matrix(x$vU[b,b,drop=F]), eig.tol=control$eig.tol)
+            } else{
+                est.direct   <- sum(lambda * x$tab$Y)
+                mse.direct   <- as.vector(t(lambda) %*% x$vU[b,b,drop=F] %*% lambda)
+                est.blp      <- sum(lambda * x$tab$blp)
+                mse.blp      <- as.vector(t(lambda) %*% x$mse_blp %*% lambda)
+                mse.null     <- as.vector(t(lambda) %*% vX[b,b,drop=F] %*% lambda)
+                prmse.null   <- 1 - mse.blp/mse.null
+                prmse.direct <- 1 - mse.blp/mse.direct
+                tmp <- list(est=c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, prmse.null = prmse.null, prmse.direct = prmse.direct))
+            }
+                
+            ## FLAG HAVE TO RETHINK HOW WEIGHTS WORK FOR BLP FROM GLS ESTIMATOR
+            ##
             ## create matrix to store weights for direct and BLP estimators.
             ## also stored indicator "obs" which indicates whether there
             ## are observed data for the corresponding block.
-            weights           <- matrix(0, ncol=3, nrow=B)
-            rownames(weights) <- allblocks
-            colnames(weights) <- c("obs","direct","blp")
+            ## weights           <- matrix(0, ncol=3, nrow=B)
+            ## rownames(weights) <- .blocknames
+            ## colnames(weights) <- c("obs","direct","blp")
 
-            weights[b,"obs"]    <- 1
-            weights[b,"direct"] <- lambda
+            ## weights[b,"obs"]    <- 1
+            ## weights[b,"direct"] <- lambda
             ## for BLP, we want to account for the fact that, aside from the adjustment
             ## for pattern means, the school mean is sum(.pi * x$Y).  the weights will
             ## sum to 1
-            .pi <- as.vector(x$pis[b])
-            .Pi <- matrix(.pi, nrow=x$nblock, ncol=x$nblock, byrow=T)
-            weights[b,"blp"] <- as.vector( t(lambda) %*% ( (tmp$IminusQ %*% .Pi) + tmp$Q ) )
+            ##
+            ## .pi <- as.vector(x$pis[b])
+            ## .Pi <- matrix(.pi, nrow=x$nblock, ncol=x$nblock, byrow=T)
+            ## weights[b,"blp"] <- as.vector( t(lambda) %*% ( (tmp$IminusQ %*% .Pi) + tmp$Q ) )
             
             ## package up and save
             x$est     <- data.frame(school = x$school, ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
-            x$weights <- weights
+            ## x$weights <- weights
             dsch[[s]] <- x
         }
     }

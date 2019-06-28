@@ -4,7 +4,7 @@ importFrom("stats", "ave", "cov", "na.omit", "reshape", "var", "weighted.mean")
 
 importFrom("methods", "as", "is", "new")
 
-importFrom("Matrix", "sparse.model.matrix", "sparseMatrix", "sparseVector", "symmpart")
+importFrom("Matrix", "bdiag", "forceSymmetric", "sparse.model.matrix", "sparseMatrix", "sparseVector", "symmpart")
 
 importFrom("MASS", "ginv")
 
