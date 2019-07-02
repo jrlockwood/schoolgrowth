@@ -1,7 +1,8 @@
 blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06, checkMSE=FALSE){
     ## X has E[X] = mu, var[X] = SigmaX
     ## Y = X + U where E[U|X] = 0, var[U] = SigmaU
-    ## compute BLP of lambda'X from Y, along with MSE and PRMSE
+    ## compute BLP of lambda'X from Y, along with MSE and PRMSE, conditional
+    ## on mu being fixed and known.
     ##
     ## algebra:
     ## Q = SigmaX(SigmaX + SigmaU)^{-1}

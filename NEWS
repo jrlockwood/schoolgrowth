@@ -1,9 +1,21 @@
 TODOs:
 
--fix global binding warnings in R CMD check
+## simplify how weights are computed in known mean/estimated mean cases and maybe bypass blp() function entirely
 
--option to parameterize SigmaX and estimate those parameters
+## enclose all prints/cats in if(!quietly){...}
 
--maybe allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
+## fix global binding warnings in R CMD check
 
--maybe move vE and vX into control
+## option to parameterize SigmaX and estimate those parameters
+
+## allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
+
+## adding cluster-robust SEs (at school level) for the block-by-pattern FE computed at the OLS stage,
+## so that the variance due to this term can be incorporated into the MSE estimator for the BLP
+
+## NEED TO DEAL WITH vX_est, right now just estimating all elements of vX without regard to vXest
+
+## need to deal with school stratification and possible additional sum-to-zero constraints
+
+
+
