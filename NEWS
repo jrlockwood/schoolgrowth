@@ -1,19 +1,24 @@
 TODOs:
 
+## adding simple equal weighted average by year to what's tracked
+
 ## simplify how weights are computed in known mean/estimated mean cases and maybe bypass blp() function entirely
 
 ## enclose all prints/cats in if(!quietly){...}
 
 ## fix global binding warnings in R CMD check
 
-## option to parameterize SigmaX and estimate those parameters
+## option to parameterize G and estimate those parameters
 
-## allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
+## allow target to be a list of named vectors so that we get BLPs for a vector
+   of outcomes simultaneously (e.g. Dan's idea of requesting the raw block-level
+   BLPs for each school) - we should also make sure this information is included
+   on dsch 
 
 ## adding cluster-robust SEs (at school level) for the block-by-pattern FE computed at the OLS stage,
 ## so that the variance due to this term can be incorporated into the MSE estimator for the BLP
 
-## NEED TO DEAL WITH vX_est, right now just estimating all elements of vX without regard to vXest
+## need to deal with G_est, right now just estimating all elements of G without regard to G_est
 
 ## need to deal with school stratification and possible additional sum-to-zero constraints
 
