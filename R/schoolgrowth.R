@@ -886,11 +886,15 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         N <- sum(sapply(dsch, function(x){ x$nblock }))
         d$sbid <- paste(d$school, gsub(" ","0",formatC(as.character(d$blockid))), sep="_")
         stopifnot(length(unique(d$sbid)) == N)
-        
+
+        ## block*pattern means which are treated as fixed offsets
+        muhat_bp <- tapply(d$muhat_bp, d$sbid, mean)
+        stopifnot(all(names(muhat_bp) == d$sbid[!duplicated(d$sbid)]))
+        muhat_bp <- as.vector(muhat_bp)       
+
         ## "Y"
         Y <- matrix(as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb_tilde }))), ncol=1)
         stopifnot( (nrow(Y) == N) && all(d$Y_sb_tilde[!duplicated(d$sbid)] == Y) )
-        muhat_bp <- as.vector(tapply(d$muhat_bp, d$sbid, mean))
 
         ## "X" design matrix for school FE only
         tmp  <- d[!duplicated(d$sbid),"schoolid",drop=FALSE]
