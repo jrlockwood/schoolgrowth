@@ -1,12 +1,8 @@
 TODOs:
 
-## G and R are not necessarily stored as symmetric matrices, need to fix that
-
 ## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
 
 ## simplify how weights are computed in known mean/estimated mean cases and maybe bypass blp() function entirely
-
-## enclose all prints/cats in if(!quietly){...}
 
 ## adding simple equal weighted average by year to what's tracked (NOTE: tricky due to mean changes)
 
@@ -22,6 +18,5 @@ TODOs:
 
 ## need to deal with school stratification and possible additional sum-to-zero constraints
 
-## option to parameterize G and estimate those parameters
 
 

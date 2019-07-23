@@ -26,7 +26,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     for(v in c("stuid","school","grade","year","subject")){
         if(!is.character(d[,v])){
             d[,v] <- as.character(d[,v])
-            cat(paste("NOTE: variable '",v,"' in 'd' coerced to character.\n",sep=""))
         }
     }
     
@@ -127,7 +126,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## if applicable, checks on user-supplied R
     if(R_supplied){
         R <- control$R
-        cat("Checking user-supplied value of R...\n")
+        if(!control$quietly){
+            cat("Checking user-supplied value of R...\n")
+        }
         
         if( !is(R,"symmetricMatrix") || !is(R,"sparseMatrix") ){
             stop("R must be a sparse, symmetric matrix from the Matrix library")
@@ -153,7 +154,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## if applicable, checks on user-supplied G
     if(G_supplied){
         G <- control$G
-        cat("Checking user-supplied value of G...\n")
+        if(!control$quietly){
+            cat("Checking user-supplied value of G...\n")
+        }
 
         if( !is(G,"symmetricMatrix") || !is(G,"sparseMatrix") ){
             stop("G must a sparse, symmetric matrix from the Matrix library")
@@ -377,7 +380,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## G_est for each blockpair depending on whether there are a sufficient
     ## number of schools to estimate that covariance element.
     ## ###################################################################
-    cat("Computing counts of schools in each block pair...\n")
+    if(!control$quietly){
+        cat("Computing counts of schools in each block pair...\n")
+    }
     .tab <- table(d$school, d$blockid)
     stopifnot(all(colnames(.tab) == 1:B) && all(rownames(.tab) == names(dsch)))
     dblockpairs$nsch  <- 0L
@@ -403,7 +408,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## for each block, and off-diagonals are the number of students in a given
     ## school contributing to the growth measures in a pair of blocks
     ## #####################################################################
-    cat("Computing counts of students in each block pair by school...\n")
+    if(!control$quietly){
+        cat("Computing counts of students in each block pair by school...\n")
+    }
     tmp <- split(d[,c("school","stuid","blockid")], d$school)
     stopifnot(all(names(tmp) == names(dsch)))
     
@@ -460,7 +467,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     stupat           <- data.frame(stuid = rownames(stupat), pattern = apply(as.matrix(stupat), 1, paste, collapse=""), stringsAsFactors=FALSE)
     stupat$stuid     <- as.character(stupat$stuid)
     stupat$pcount    <- ave(rep(1,nrow(stupat)), stupat$pattern, FUN=sum)
-    cat(paste("Number of patterns before collapsing:",length(unique(stupat$pattern)),"\n"))
+    if(!control$quietly){
+        cat(paste("Number of patterns before collapsing:",length(unique(stupat$pattern)),"\n"))
+    }
     
     ## apply collapsing rule:
     ## 1) collapse all patterns with counts less than control$pattern_nmin into one pattern
@@ -482,7 +491,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         tmp$pcount[.w] <- .n
     }
-    cat(paste("Number of patterns after collapsing (control$pattern_nmin=",control$pattern_nmin,"): ", length(unique(tmp$cpattern)),"\n",sep=""))
+    if(!control$quietly){
+        cat(paste("Number of patterns after collapsing (control$pattern_nmin=",control$pattern_nmin,"): ", length(unique(tmp$cpattern)),"\n",sep=""))
+    }
     tab_patterns <- tmp
     
     ## assign the collapsed patterns to "collapsed"
@@ -500,7 +511,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## #############################################################
     ## checking for stratification of schools * (block*pattern indicators)
     ## #############################################################
-    cat("Checking for stratification...\n")
+    if(!control$quietly){
+        cat("Checking for stratification...\n")
+    }
     d$schoolid <- as.integer(as.factor(d$school))
     d$bpid     <- as.integer(as.factor(paste(d$blockid, d$patternid)))
     
@@ -534,7 +547,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$R      <- 0.0
         dblockpairs$R_nstu <- 0L
 
-        cat("Estimating residual variances...\n")
+        if(!control$quietly){
+            cat("Estimating residual variances...\n")
+        }
         .ss  <- tapply(d$e^2, d$blockid, sum)
         .n   <- tapply(rep(1,nrow(d)), d$blockid, sum)
         .rdf <- .n - tapply(d$sbp, d$blockid, function(x){ length(unique(x))})
@@ -544,13 +559,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$R_nstu[wh] <- as.vector(.n)
         dblockpairs$R[wh]      <- as.vector(.ss / .rdf)
 
-        cat("Estimating residual covariances...\n")
+        if(!control$quietly){
+            cat("Estimating residual covariances...\n")
+        }
         for(wh in subset(dblockpairs, (blockidi != blockidj) & R_est)$iB){
             bi <- dblockpairs$blockidi[wh]
             bj <- dblockpairs$blockidj[wh]
-            if(!control$quietly){
-                cat(paste(bi, bj, "\n"))
-            }
             tmp <- subset(d, blockid %in% c(bi, bj), select = c("stuid","school","blockid","sbp","nsbp","e"))
             tmp$blockid[which(tmp$blockid==bi)] <- 0
             tmp$blockid[which(tmp$blockid==bj)] <- 1
@@ -587,7 +601,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## compute OLS estimates of regression coefficients
     ## ###################################################################
     if(!mean_supplied){
-        cat("Computing OLS estimates of regression coefficients...\n")    
+        if(!control$quietly){
+            cat("Computing OLS estimates of regression coefficients...\n")
+        }
         modstats   <- c(varY = var(d$Y))
         d$schoolid <- factor(d$school)
         d$bpid     <- factor(d$bpid)
@@ -635,7 +651,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## print(max(abs(d$muhat - d$muhat_chk)))
         ## d$muhat_chk <- NULL
     } else {
-        cat("Bypassing mean estimation...\n")
+        if(!control$quietly){
+            cat("Bypassing mean estimation...\n")
+        }
         modstats <- NULL
         .bhat    <- NULL
     }
@@ -644,7 +662,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## calculate and check various school*block aggregates, which will be used
     ## for estimating G and ultimately for doing the BLP calculation
     ## ############################################################
-    cat("Computing and checking school*block aggregate measures...\n")
+    if(!control$quietly){
+        cat("Computing and checking school*block aggregate measures...\n")
+    }
     d$Y_sb <- ave(d$Y, d$school, d$block)
 
     if(!mean_supplied){
@@ -681,7 +701,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: do this with a loop and accumulate key results so that we don't need
     ## to store large pieces for each school
     ## ########################################################
-    cat("Computing required school-level quantities (may be slow when estimating G)...\n")
+    if(!control$quietly){
+        cat("Computing required school-level quantities (may be slow when estimating G)...\n")
+    }
 
     ## create R
     ## NOTE: this is provisional, used for moment estimation, and may not be PSD.
@@ -822,9 +844,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         
         dsch[[s]] <- x
-        if(!control$quietly){
-            cat(paste("school:",s,"\n"))
-        }
     }
     ## t2 <- proc.time()
     ## print(t2["elapsed"] -t1["elapsed"])
@@ -836,7 +855,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## for G* are introduced depending on G_est
     ## #########################################################
     if(!G_supplied){
-        cat("Estimating school*block variance components...\n")
+        if(!control$quietly){
+            cat("Estimating school*block variance components...\n")
+        }
 
         ## define pieces needed to get WLS estimator, restricting to observations (rows)
         ## and parameters (columns) depending on G_est
@@ -880,7 +901,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## adjustment (which generally will not preserve fixed zeros).
         e <- eigen(Gstar)
         if(any(e$values < max(e$values)*control$eig.tol)){
-            cat("Adjusting G* to make PSD...\n")
+            if(!control$quietly){
+                cat("Adjusting G* to make PSD...\n")
+            }
             .Gstar <- Gstar
             tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)
             if(tmp$converged){
@@ -889,9 +912,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
                 Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
             }
-            cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
-            cat("Summary of differences between original and adjusted G*:\n")
-            print(summary(c(as.matrix(Gstar - .Gstar))))
+            if(!control$quietly){
+                cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
+                cat("Summary of differences between original and adjusted G*:\n")
+                print(summary(c(as.matrix(Gstar - .Gstar))))
+            }
         }
         G     <- A %*% Gstar %*% t(A)
         dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
@@ -913,7 +938,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
         e <- eigen(R)
         if(any(e$values < max(e$values)*control$eig.tol)){
-            cat("Adjusting R to make PSD...\n")
+            if(!control$quietly){
+                cat("Adjusting R to make PSD...\n")
+            }
             .R  <- R
             tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)
             if(tmp$converged){
@@ -924,9 +951,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             R   <- as(R,"sparseMatrix")
             rownames(R) <- colnames(R) <- .blocknames
-            cat(paste0("Smallest eigenvalue of adjusted R: ",min(eigen(R)$values),"\n"))
-            cat("Summary of differences between original and adjusted R:\n")
-            print(summary(c(as.matrix(R - .R))))
+            if(!control$quietly){
+                cat(paste0("Smallest eigenvalue of adjusted R: ",min(eigen(R)$values),"\n"))
+                cat("Summary of differences between original and adjusted R:\n")
+                print(summary(c(as.matrix(R - .R))))
+            }
             dblockpairs$R <- R[lower.tri(R, diag=TRUE)]
 
             ## adjust R_sb elements of dsch as well, since these are used in BLP
@@ -954,7 +983,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ##
     ## #############################################
     if(!mean_supplied){
-        cat("Computing GLS estimator and raw BLPs...\n")
+        if(!control$quietly){
+            cat("Computing GLS estimator and raw BLPs...\n")
+        }
         
         stopifnot(all(sapply(dsch, function(x){ x$nblock == nrow(x$tab)})))
         N <- sum(sapply(dsch, function(x){ x$nblock }))
@@ -1004,12 +1035,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         .blp        <- muhat_bp + as.vector(.Xbgls + (bigG %*% Vinv %*% (Y - .Xbgls)))
 
         ## summaries of BLUPs
-        cat(paste("(MM) range of raw BLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
-        tmp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb })))
-        cat(paste("(MM) cor(Y,raw BLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
+        if(!control$quietly){
+            cat(paste("(MM) range of raw BLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
+            tmp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb })))
+            cat(paste("(MM) cor(Y,raw BLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
+        }
 
         ## MSE estimators, treating block*pattern FE as known but school FE as unknown
-        cat("Computing MSE estimates of raw BLPs by school (may be slow)...\n")
+        if(!control$quietly){
+            cat("Computing MSE estimates of raw BLPs by school (may be slow)...\n")
+        }
         .pos <- 0
         for(s in 1:length(dsch)){
             x    <- dsch[[s]]
@@ -1037,7 +1072,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## #############################################
     ## BLP and MSE calculation for weighted composite
     ## #############################################
-    cat("Computing composite BLPs and MSE estimates...\n")
+    if(!control$quietly){
+        cat("Computing composite BLPs and MSE estimates...\n")
+    }
     for(s in 1:length(dsch)){
         x <- dsch[[s]]
         b <- x$oblocks
