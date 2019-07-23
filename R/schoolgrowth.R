@@ -87,20 +87,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         d$muhat <- d[,control$mean_varname]
     }
-    
-    ## restrict data to schools with at least "control$school_nmin" total observations
-    cat(paste("Restricting data to schools with at least",control$school_nmin,"student(s)...\n"))
-    d$n <- ave(rep(1,nrow(d)), d$school, FUN=sum)
-    if(!control$quietly){
-        print(c(nrec = nrow(d), nsch = length(unique(d$school))))
+
+    ## stop if there are any schools with fewer than control$school_nmin records
+    if(any(as.vector(table(d$school)) < control$school_nmin)){
+        stop("there are schools with fewer than control$school_nmin records")
     }
-    d   <- subset(d, n >= control$school_nmin)
-    if(!control$quietly){
-        print(c(nrec = nrow(d), nsch = length(unique(d$school))))
-    }
-    d$n <- NULL
     
-    ## make sure that we don't have fewer observations than control$pattern_nmin
+    ## stop if there are fewer tota records than control$pattern_nmin
     if(nrow(d) < control$pattern_nmin){
         stop("control$pattern_nmin is larger than the total number of observations")
     }
@@ -120,8 +113,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## sort data by school, blockid and student, which will faciliate later
     ## bookkeeping during the second-stage mixed-model estimation
     d <- d[order(d$school, d$blockid, d$stuid),]
-    d$index <- as.integer(1:nrow(d))
-    
+
+    ## check that data have at most one record per student per block
+    if(any(duplicated(paste(d$blockid, d$stuid)))){
+        stop("Data must have at most one record per student per block")
+    }
+
+    ## current code needs at least 3 blocks
     if(B <= 2){
         stop("Current function requires at least three blocks")
     }
@@ -327,7 +325,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: we order the elements of dblockpairs to fill the lower triangle
     ## of a BxB symmetric matrix using column-major order
     ## #################################################################
-    dblockpairs <- data.frame(index = 1:B2, blockidi = 0L, blockidj = 0L)
+    dblockpairs <- data.frame(iB = 1:B2, blockidi = 0L, blockidj = 0L)
     wh <- 0
     for(j in 1:B){
         for(i in j:B){
@@ -339,7 +337,30 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     dblockpairs$blocki <- dblock$block[match(dblockpairs$blockidi, dblock$blockid)]
     dblockpairs$blockj <- dblock$block[match(dblockpairs$blockidj, dblock$blockid)]
     ## CHECK on order:
-    ## print(sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$index, symmetric=TRUE))
+    ## print(sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$iB, symmetric=TRUE))
+
+    ## ###################################################################
+    ## add another index to dblockpairs.  The existing index is "iB" which
+    ## indexes elements of lower triangle of BxB symmetric matrix using
+    ## column-major order.  Add "iBminus1" which will index elements
+    ## of (B-1)x(B-1) upper left submatrix of symmetric BxB matrix, corresponding
+    ## to parameters that are directly estimated, rather than implicitly
+    ## defined by sum-to-zero constraints. This is needed to implement
+    ## fixing certain elements of G* to 0 based on G_est (defined later)
+    ## ###################################################################
+    dblockpairs$iBminus1 <- 0L
+    is.na(dblockpairs$iBminus1) <- TRUE
+    wh <- 0
+    for(j in 1:(B-1)){
+        for(i in j:(B-1)){
+            wh <- wh + 1
+            loc <- which( (dblockpairs$blockidi == i) & (dblockpairs$blockidj == j) )
+            dblockpairs$iBminus1[loc] <- wh
+        }
+    }
+    dblockpairs <- dblockpairs[,c("blocki","blockj","blockidi","blockidj","iB","iBminus1")]
+    stopifnot(all(is.na(subset(dblockpairs, (blockidi == B) | (blockidj == B))$iBminus1)))
+    stopifnot(all(na.omit(dblockpairs$iBminus1) == 1:(B*(B-1)/2)))
     
     ## ##################################################################
     ## create "dsch" master list that will hold all school-level information.
@@ -359,12 +380,20 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     cat("Computing counts of schools in each block pair...\n")
     .tab <- table(d$school, d$blockid)
     stopifnot(all(colnames(.tab) == 1:B) && all(rownames(.tab) == names(dsch)))
-    dblockpairs$nsch  <- 0L    
+    dblockpairs$nsch  <- 0L
     dblockpairs$G_est <- TRUE
     
     for(wh in 1:B2){
         dblockpairs$nsch[wh]  <- sum( (.tab[,dblockpairs$blockidi[wh]] * .tab[,dblockpairs$blockidj[wh]]) >= 0.99 )
         dblockpairs$G_est[wh] <- ifelse(G_supplied, FALSE, dblockpairs$nsch[wh] >= control$blockpair_school_nmin)
+    }
+
+    ## stop if any block has too few schools
+    if(!G_supplied){
+        tmp <- subset(dblockpairs, blockidi == blockidj)
+        if(!all(tmp$G_est)){
+            stop("At least one block has fewer than control$blockpair_school_nmin schools")
+        }
     }
     
     ## #####################################################################
@@ -411,7 +440,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## students in that block pair to estimate the corresponding error covariance.
     ## ##################################################################
     stupat            <- table(d$stuid, d$blockid)
-    stopifnot( (all(colnames(stupat) == as.character(1:B))) && (nrow(stupat) == length(unique(d$stuid))) )
+    stopifnot( (all(colnames(stupat) == as.character(1:B))) && (nrow(stupat) == length(unique(d$stuid))) )    
     dblockpairs$nstu  <- 0L
     dblockpairs$R_est <- TRUE
     
@@ -421,9 +450,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     ## stop if any block has too few students
-    tmp <- subset(dblockpairs, blockidi == blockidj)
-    if(!all(tmp$R_est)){
-        stop("At least one block has fewer than control$blockpair_student_nmin students")
+    if(!R_supplied){
+        tmp <- subset(dblockpairs, blockidi == blockidj)
+        if(!all(tmp$R_est)){
+            stop("At least one block has fewer than control$blockpair_student_nmin students")
+        }
     }
     
     stupat           <- data.frame(stuid = rownames(stupat), pattern = apply(as.matrix(stupat), 1, paste, collapse=""), stringsAsFactors=FALSE)
@@ -514,7 +545,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$R[wh]      <- as.vector(.ss / .rdf)
 
         cat("Estimating residual covariances...\n")
-        for(wh in subset(dblockpairs, (blockidi != blockidj) & R_est)$index){
+        for(wh in subset(dblockpairs, (blockidi != blockidj) & R_est)$iB){
             bi <- dblockpairs$blockidi[wh]
             bj <- dblockpairs$blockidj[wh]
             if(!control$quietly){
@@ -626,7 +657,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## school*block mean
         d$muhat <- ave(d$muhat, d$school, d$block)
     }
-    d$nsb      <- ave(rep(1,nrow(d)),   d$school, d$block, FUN=sum)
+    d$nsb      <- ave(rep(1,nrow(d)), d$school, d$block, FUN=sum)
     
     tmp        <- d[!duplicated(paste(d$school, d$block)), c("school","grade","year","subject","block","blockid","nsb","muhat","Y_sb","Y_sb_tilde")]
     tmp        <- tmp[order(tmp$school, tmp$blockid),]
@@ -686,7 +717,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     posd <- which(unlist(posd) > 0L)
 
     ## create a matrix to hold positions of (i,j) element of (BxB) symmetric
-    ## matrix stored as column-major lower triangle
+    ## matrix stored as column-major lower triangle.
     posB <- matrix(0,ncol=B,nrow=B)
     posB[lower.tri(posB, diag=TRUE)] <- 1:B2
     
@@ -798,57 +829,100 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## t2 <- proc.time()
     ## print(t2["elapsed"] -t1["elapsed"])
     rm(Zs0); gc()
-
+    
     ## #########################################################
-    ## compute WLS estimates of G* elements, force to PSD, and
-    ## translate to estimates of G.
+    ## compute WLS estimates of G* elements, force to PSD,
+    ## and translate to estimates of G.  Note that fixed zeros
+    ## for G* are introduced depending on G_est
     ## #########################################################
     if(!G_supplied){
         cat("Estimating school*block variance components...\n")
+
+        ## define pieces needed to get WLS estimator, restricting to observations (rows)
+        ## and parameters (columns) depending on G_est
+
+        ## observation (row) restrictions
+        rkeep  <- dblockpairs$G_est
         .Y     <- as.matrix(adj_observed_moments)
         .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
-        .W     <- sparseMatrix(i=1:B2, j=1:B2, x=dblockpairs$nsch, dims=c(B2,B2), symmetric=TRUE)
+        stopifnot(length(rkeep) == length(.Y))
+        .Y     <- .Y[rkeep]
+        G_Z    <- G_Z[rkeep,]
+
+        tmp    <- subset(dblockpairs, G_est)
+        stopifnot(all(diff(tmp$iB) > 0))
+        .W     <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
+
+        ## parameter (column) restrictions
+        tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
+        stopifnot(all(diff(tmp$iBminus1) == 1))
+        ckeep  <- tmp$G_est
+        G_Z    <- G_Z[,ckeep]
+
+        ## solve for estimable parameters and construct Gstar
+        tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
+        stopifnot(all(diff(tmp$iBminus1) > 0))        
         .xpx   <- t(G_Z) %*% .W %*% G_Z
         .xpy   <- t(G_Z) %*% .W %*% .Y
-        Gstar  <- matrix(0.0, ncol=(B-1), nrow=(B-1))
-        Gstar[lower.tri(Gstar,diag=TRUE)] <- as.vector(solve(.xpx, .xpy))
-        Gstar  <- Gstar + t(Gstar)
-        diag(Gstar) <- 0.5 * diag(Gstar)
+        tmp$gstar <- as.vector(solve(.xpx, .xpy))
+        Gstar  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
         
         ## create "Graw" which is based on raw Gstar, even if not PSD.
         ## this is just to save and return
-        Graw             <- A %*% Gstar %*% t(A)
+        Graw             <- as.matrix(A %*% Gstar %*% t(A))
         dblockpairs$Graw <- Graw[lower.tri(Graw, diag=TRUE)]
         
         ## force Gstar to be PSD and create "G" from that, which will be used for
         ## later calculations.
-        ## NOTE: we don't use nearPD2 here because there are currently no forced zeros
-        e     <- eigen(Gstar)
-        e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
-        Gstar.adj <- e$vectors %*% diag(e$values) %*% t(e$vectors)
-        G     <- A %*% Gstar.adj %*% t(A)
+        ##
+        ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
+        ## it.  if it does not, we fall back to the spectral decomposition
+        ## adjustment (which generally will not preserve fixed zeros).
+        e <- eigen(Gstar)
+        if(any(e$values < max(e$values)*control$eig.tol)){
+            cat("Adjusting G* to make PSD...\n")
+            .Gstar <- Gstar
+            tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)
+            if(tmp$converged){
+                Gstar <- tmp$mat
+            } else {
+                e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
+                Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+            }
+            cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
+            cat("Summary of differences between original and adjusted G*:\n")
+            print(summary(c(as.matrix(Gstar - .Gstar))))
+        }
+        G     <- A %*% Gstar %*% t(A)
         dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
         G     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$G, dims=c(B,B), symmetric=TRUE)
         rownames(G) <- colnames(G) <- .blocknames
-        rm(.Y,.W,.xpx,.xpy,Gstar,Gstar.adj)        
+        rm(.Y,.W,.xpx,.xpy,Gstar,G_Z)
     } else {
         dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
     }
 
     ## ###################################################
     ## now that G estimation is done, go back and force R to be PSD if needed.
-    ## NOTE: now using nearPD2 function to maintain fixed zeros
+    ## NOTE: now using nearPD2 function to maintain fixed zeros, and as with
+    ## G*, we fall back to spectral decomposition if nearPD2 does not converge
     ## ###################################################
     if(!R_supplied){    
         names(dblockpairs)[which(names(dblockpairs)=="R")] <- "Rraw"
         dblockpairs$R <- dblockpairs$Rraw
 
-        e <- eigen(R)$values
-        if(any(e < max(e)*control$eig.tol)){
+        e <- eigen(R)
+        if(any(e$values < max(e$values)*control$eig.tol)){
             cat("Adjusting R to make PSD...\n")
             .R  <- R
-            tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)$mat
-            R   <- as(tmp,"sparseMatrix")
+            tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)
+            if(tmp$converged){
+                R <- tmp$mat
+            } else {
+                e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
+                R <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+            }
+            R   <- as(R,"sparseMatrix")
             rownames(R) <- colnames(R) <- .blocknames
             cat(paste0("Smallest eigenvalue of adjusted R: ",min(eigen(R)$values),"\n"))
             cat("Summary of differences between original and adjusted R:\n")

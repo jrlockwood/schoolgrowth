@@ -1,14 +1,16 @@
 TODOs:
 
-## adding simple equal weighted average by year to what's tracked
+## G and R are not necessarily stored as symmetric matrices, need to fix that
+
+## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
 
 ## simplify how weights are computed in known mean/estimated mean cases and maybe bypass blp() function entirely
 
 ## enclose all prints/cats in if(!quietly){...}
 
-## fix global binding warnings in R CMD check
+## adding simple equal weighted average by year to what's tracked (NOTE: tricky due to mean changes)
 
-## option to parameterize G and estimate those parameters
+## fix global binding warnings in R CMD check
 
 ## allow target to be a list of named vectors so that we get BLPs for a vector
    of outcomes simultaneously (e.g. Dan's idea of requesting the raw block-level
@@ -18,9 +20,8 @@ TODOs:
 ## adding cluster-robust SEs (at school level) for the block-by-pattern FE computed at the OLS stage,
 ## so that the variance due to this term can be incorporated into the MSE estimator for the BLP
 
-## need to deal with G_est, right now just estimating all elements of G without regard to G_est
-
 ## need to deal with school stratification and possible additional sum-to-zero constraints
 
+## option to parameterize G and estimate those parameters
 
 
