@@ -1019,6 +1019,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             if(max(abs(.tmp - t(.tmp))) > 1e-8){
                 warning("matrix of questionable symmetry arose in computation of V^{-1}")
             }
+            .tmp <- forceSymmetric(.tmp)
             as(.tmp, "symmetricMatrix")
         }))
         

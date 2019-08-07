@@ -16,7 +16,10 @@ TODOs:
 ## adding cluster-robust SEs (at school level) for the block-by-pattern FE computed at the OLS stage,
 ## so that the variance due to this term can be incorporated into the MSE estimator for the BLP
 
-## need to deal with school stratification and possible additional sum-to-zero constraints
+## need to deal with school stratification and possible additional sum-to-zero
+   constraints - or maybe the code should just stay as is, forcing the end-user
+   to think about and confront strata directly, rather than having an automatic
+   solution implemented that might not do what someone wants
 
 
 
