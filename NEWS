@@ -1,10 +1,14 @@
 TODOs:
 
-## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
+## change BLP calculation so that all schools get BLP even if they don't have
+## data in the target blocks, in which case they just get what's implied by the
+## FE structure.  Need to make sure that MSE calculation is correct in that case.
 
-## simplify how weights are computed in known mean/estimated mean cases and maybe bypass blp() function entirely
+## rename muhat when mean_supplied to mu_supplied, and make all mu variable
+   names more sane
 
-## adding simple equal weighted average by year to what's tracked (NOTE: tricky due to mean changes)
+## simplify how weights are computed in known mean/estimated mean cases and
+   maybe bypass blp() function entirely
 
 ## fix global binding warnings in R CMD check
 
@@ -13,13 +17,13 @@ TODOs:
    BLPs for each school) - we should also make sure this information is included
    on dsch 
 
-## adding cluster-robust SEs (at school level) for the block-by-pattern FE computed at the OLS stage,
-## so that the variance due to this term can be incorporated into the MSE estimator for the BLP
+## add cluster-robust SEs (at school level) for the block-by-pattern FE computed
+## at the OLS stage, so that the variance due to this term can be incorporated
+## into the MSE estimator for the BLP
 
-## need to deal with school stratification and possible additional sum-to-zero
-   constraints - or maybe the code should just stay as is, forcing the end-user
-   to think about and confront strata directly, rather than having an automatic
-   solution implemented that might not do what someone wants
+## for help file: note that code forces the end-user to think about and confront
+## strata directly, rather than having an automatic solution implemented that
+## might not do what someone wants.  the code will not run without connectedness.
 
 
 

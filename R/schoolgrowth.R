@@ -1064,6 +1064,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
             x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[x$oblocks,x$oblocks,drop=F] %*% t(Q))
             x$Q       <- Q
+            x$var_schoolFE <- 1.0/sum(.vinv) ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}
             dsch[[s]] <- x
         }
         stopifnot(.pos == N)
