@@ -102,12 +102,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: don't use unique() due to excessive RAM usage.
     d$block     <- factor(paste("t",d$year,"_g",d$grade,"_b",d$subject,sep=""))
     d$blockid   <- as.integer(d$block)
-    dblock      <- d[which(!duplicated(d$block)),c("year","grade","subject","block","blockid")]
+    d$block_n   <- ave(rep(1,nrow(d)), d$blockid, FUN=sum)
+    dblock      <- d[which(!duplicated(d$block)),c("year","grade","subject","block","blockid","block_n")]
     dblock      <- dblock[order(dblock$blockid),]
     B           <- nrow(dblock)
     B2          <- B*(B+1)/2
     .blocknames <- as.character(dblock$block)
     rownames(dblock) <- 1:B
+    d$block_n   <- NULL
 
     ## sort data by school, blockid and student, which will faciliate later
     ## bookkeeping during the second-stage mixed-model estimation
@@ -604,7 +606,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(!control$quietly){
             cat("Computing OLS estimates of regression coefficients...\n")
         }
-        modstats   <- c(varY = var(d$Y))
+        modstats   <- c(ntot = nrow(d), nstu = length(unique(d$stuid)), nsch = length(unique(d$school)), varY = var(d$Y))
         d$schoolid <- factor(d$school)
         d$bpid     <- factor(d$bpid)
 

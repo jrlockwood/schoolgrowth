@@ -1,11 +1,11 @@
 TODOs:
 
+## rename muhat when mean_supplied to mu_supplied, and make all mu variable
+   names more sane
+
 ## change BLP calculation so that all schools get BLP even if they don't have
 ## data in the target blocks, in which case they just get what's implied by the
 ## FE structure.  Need to make sure that MSE calculation is correct in that case.
-
-## rename muhat when mean_supplied to mu_supplied, and make all mu variable
-   names more sane
 
 ## simplify how weights are computed in known mean/estimated mean cases and
    maybe bypass blp() function entirely
