@@ -1,4 +1,4 @@
-blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06, checkMSE=FALSE){
+blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol, checkMSE=FALSE){
     ## X has E[X] = mu, var[X] = SigmaX
     ## Y = X + U where E[U|X] = 0, var[U] = SigmaU
     ## compute BLP of lambda'X from Y, along with MSE and PRMSE, conditional
@@ -28,7 +28,7 @@ blp <- function(Y, lambda, mu, SigmaX, SigmaU, eig.tol=1e-06, checkMSE=FALSE){
     ## adjustment based on eigenvalues
     SigmaXpU <- SigmaX + SigmaU
     e        <- eigen(SigmaXpU)
-    tozero   <- which(e$values < max(e$values)*eig.tol)
+    tozero   <- which(e$values < max(abs(e$values))*eig.tol)
     if(length(tozero) > 0){
         print("warning in blp: eigenvalues of SigmaX + SigmaU adjusted")
         e$values[tozero] <- 0.0

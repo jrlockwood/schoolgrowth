@@ -148,7 +148,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("R columns not specified properly")
         }
 
-        if( min(eigen(R)$values) < -sqrt(.Machine$double.eps) ){
+        .e <- eigen(R)$values
+        if(any(.e < -max(abs(.e))*control$eig.tol)){
             stop("R appears to have negative eigenvalues")
         }
     }
@@ -176,7 +177,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("G columns not specified properly")
         }
 
-        if( min(eigen(G)$values) < -sqrt(.Machine$double.eps) ){
+        .e <- eigen(G)$values
+        if(any(.e < -max(abs(.e))*control$eig.tol)){
             stop("G appears to have negative eigenvalues")
         }
 
@@ -901,18 +903,25 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
         ## it.  if it does not, we fall back to the spectral decomposition
         ## adjustment (which generally will not preserve fixed zeros).
+        ## note also that we start with keepDiag=TRUE and revert to keepDiag=FALSE
+        ## if necessary
         e <- eigen(Gstar)
-        if(any(e$values < max(e$values)*control$eig.tol)){
+        if(any(e$values < -max(abs(e$values))*control$eig.tol)){
             if(!control$quietly){
                 cat("Adjusting G* to make PSD...\n")
             }
             .Gstar <- Gstar
-            tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)
+            tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=TRUE)
             if(tmp$converged){
                 Gstar <- tmp$mat
             } else {
-                e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
-                Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=FALSE)
+                if(tmp$converged){
+                    Gstar <- tmp$mat
+                } else {
+                    e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
+                    Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                }
             }
             if(!control$quietly){
                 cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
@@ -932,24 +941,29 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## ###################################################
     ## now that G estimation is done, go back and force R to be PSD if needed.
     ## NOTE: now using nearPD2 function to maintain fixed zeros, and as with
-    ## G*, we fall back to spectral decomposition if nearPD2 does not converge
+    ## G*, there is a sequential decision about how to compute the adjusted matrix
     ## ###################################################
     if(!R_supplied){    
         names(dblockpairs)[which(names(dblockpairs)=="R")] <- "Rraw"
         dblockpairs$R <- dblockpairs$Rraw
 
         e <- eigen(R)
-        if(any(e$values < max(e$values)*control$eig.tol)){
+        if(any(e$values < -max(abs(e$values))*control$eig.tol)){
             if(!control$quietly){
                 cat("Adjusting R to make PSD...\n")
             }
             .R  <- R
-            tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000)
+            tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=TRUE)
             if(tmp$converged){
                 R <- tmp$mat
             } else {
-                e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
-                R <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=FALSE)
+                if(tmp$converged){
+                    R <- tmp$mat
+                } else {
+                    e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
+                    R <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                }
             }
             R   <- as(R,"sparseMatrix")
             rownames(R) <- colnames(R) <- .blocknames
