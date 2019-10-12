@@ -149,7 +149,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
 
         .e <- eigen(R)$values
-        if(any(.e < -max(abs(.e))*control$eig.tol)){
+        if(any(.e < -sqrt(.Machine$double.eps))){
             stop("R appears to have negative eigenvalues")
         }
     }
@@ -178,7 +178,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
 
         .e <- eigen(G)$values
-        if(any(.e < -max(abs(.e))*control$eig.tol)){
+        if(any(.e < -sqrt(.Machine$double.eps))){
             stop("G appears to have negative eigenvalues")
         }
 
@@ -906,7 +906,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## note also that we start with keepDiag=TRUE and revert to keepDiag=FALSE
         ## if necessary
         e <- eigen(Gstar)
-        if(any(e$values < -max(abs(e$values))*control$eig.tol)){
+        if(any(e$values < -sqrt(.Machine$double.eps))){
             if(!control$quietly){
                 cat("Adjusting G* to make PSD...\n")
             }
@@ -948,7 +948,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$R <- dblockpairs$Rraw
 
         e <- eigen(R)
-        if(any(e$values < -max(abs(e$values))*control$eig.tol)){
+        if(any(e$values < -sqrt(.Machine$double.eps))){
             if(!control$quietly){
                 cat("Adjusting R to make PSD...\n")
             }
