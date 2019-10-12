@@ -59,34 +59,37 @@ nearPD2	<- function (x,fix0s=FALSE,corr = FALSE, keepDiag = FALSE, do2eigen = TR
                 iter, sum(p), conv))
         converged <- (conv <= conv.tol)
     }
-    if (!converged) 
+    if (!converged) {
         warning(gettextf("'nearPD()' did not converge in %d iterations", 
-            iter), domain = NA)
-    if (do2eigen || only.values) {
-        e <- eigen(X, symmetric = TRUE)
-        d <- e$values
-        Eps <- posd.tol * abs(d[1])
-        if (d[n] < Eps) {
-            d[d < Eps] <- Eps
-            if (!only.values) {
-                Q <- e$vectors
-                o.diag <- diag(X)
-                X <- Q %*% (d * t(Q))
-                D <- sqrt(pmax(Eps, o.diag)/diag(X))
-                X[] <- D * X * rep(D, each = n)
+                         iter), domain = NA)
+        return(list(converged=FALSE))
+    } else {
+        if (do2eigen || only.values) {
+            e <- eigen(X, symmetric = TRUE)
+            d <- e$values
+            Eps <- posd.tol * abs(d[1])
+            if (d[n] < Eps) {
+                d[d < Eps] <- Eps
+                if (!only.values) {
+                    Q <- e$vectors
+                    o.diag <- diag(X)
+                    X <- Q %*% (d * t(Q))
+                    D <- sqrt(pmax(Eps, o.diag)/diag(X))
+                    X[] <- D * X * rep(D, each = n)
+                }
             }
+            if (only.values) 
+                return(d)
+            if (corr) 
+                diag(X) <- 1
+            else if (keepDiag) 
+                diag(X) <- diagX0
         }
-        if (only.values) 
-            return(d)
-        if (corr) 
-            diag(X) <- 1
-        else if (keepDiag) 
-            diag(X) <- diagX0
+        structure(list(mat = new("dpoMatrix", x = as.vector(X), Dim = c(n, 
+                                                                        n)), 
+                       ##	Dimnames = .M.DN(x)), ##commented out 
+                       eigenvalues = d, corr = corr, 
+                       normF = norm(x - X, "F"), iterations = iter, rel.tol = conv, 
+                       converged = converged), class = "nearPD")
     }
-    structure(list(mat = new("dpoMatrix", x = as.vector(X), Dim = c(n, 
-        n)), 
-##	Dimnames = .M.DN(x)), ##commented out 
-	eigenvalues = d, corr = corr, 
-        normF = norm(x - X, "F"), iterations = iter, rel.tol = conv, 
-        converged = converged), class = "nearPD")
 }
