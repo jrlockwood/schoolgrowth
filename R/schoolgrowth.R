@@ -1085,6 +1085,18 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         stopifnot(.pos == N)
         rm(.blp,Y,.Xbgls,bigG,Vinv,.X,.Xp_Vinv_X,.Xp_Vinv); gc()
+
+        ## use schoolFE and var_schoolFE to estimate variance in individual
+        ## growth attributable to schoolFE, where schools are weighted according
+        ## to the total number of attached growth scores, and where we assume
+        ## that errors for estimated FE by school are uncorrelated, with
+        ## is an approximation
+        .l    <- sapply(dsch, function(x){ sum(x$tab$nsb) })
+        .l    <- .l/sum(.l)
+        .y    <- sapply(dsch, function(x){ x$schoolFE })
+        .s    <- sapply(dsch, function(x){ x$var_schoolFE })
+        modstats["estimated_variance_among_schools"] <- (sum(.l * .y^2) - sum(.l * .s)) - ( (sum(.l * .y))^2 - sum(.l^2 * .s) )
+        modstats["estimated_percvar_among_schools"]     <- modstats["estimated_variance_among_schools"] / modstats["varY"]
     }
     
     ## #############################################

@@ -1,5 +1,7 @@
 TODOs:
 
+## add element to control that alters order in which nearPD2 ideas are tried (keepDiag first or second)
+
 ## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
 
 ## change BLP calculation so that all schools get BLP even if they don't have
