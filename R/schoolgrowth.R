@@ -63,6 +63,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$eig.tol)){
         control$eig.tol <- 1e-06
     }
+
+    if(is.null(control$keepDiag_first)){
+        control$keepDiag_first <- TRUE
+    }
     
     mean_supplied <- !is.null(control$mean_varname)
     R_supplied    <- !is.null(control$R)
@@ -903,19 +907,20 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
         ## it.  if it does not, we fall back to the spectral decomposition
         ## adjustment (which generally will not preserve fixed zeros).
-        ## note also that we start with keepDiag=TRUE and revert to keepDiag=FALSE
-        ## if necessary
+        ##
+        ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
+        ## control$keepDiag_first (default TRUE)
         e <- eigen(Gstar)
         if(any(e$values < -sqrt(.Machine$double.eps))){
             if(!control$quietly){
                 cat("Adjusting G* to make PSD...\n")
             }
             .Gstar <- Gstar
-            tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=TRUE)
+            tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=control$keepDiag_first)
             if(tmp$converged){
                 Gstar <- tmp$mat
             } else {
-                tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=FALSE)
+                tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=!control$keepDiag_first)
                 if(tmp$converged){
                     Gstar <- tmp$mat
                 } else {
@@ -953,11 +958,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 cat("Adjusting R to make PSD...\n")
             }
             .R  <- R
-            tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=TRUE)
+            tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=control$keepDiag_first)
             if(tmp$converged){
                 R <- tmp$mat
             } else {
-                tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=FALSE)
+                tmp <- nearPD2(R, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=!control$keepDiag_first)
                 if(tmp$converged){
                     R <- tmp$mat
                 } else {
