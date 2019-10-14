@@ -1173,9 +1173,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             
             ## package up and save
-            x$est     <- data.frame(school = x$school, ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
-            x$weights <- weights
-            dsch[[s]] <- x
+            x$est         <- data.frame(school = x$school, ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
+            x$est$gconfig <- paste(sort(unique(x$tab$grade)), collapse="")
+            x$weights     <- weights
+            dsch[[s]]     <- x
         }
     }
 
