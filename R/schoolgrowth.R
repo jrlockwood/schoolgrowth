@@ -67,6 +67,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$keepDiag_first)){
         control$keepDiag_first <- TRUE
     }
+
+    if(is.null(control$return_d)){
+        control$return_d <- FALSE
+    }
     
     mean_supplied <- !is.null(control$mean_varname)
     R_supplied    <- !is.null(control$R)
@@ -1183,18 +1187,22 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## ####################
     ## RETURN
     ## ####################
-    return(list(control                = control,
-                target                 = target,
-                target_contrast        = target_contrast,
-                dblock                 = dblock,
-                dblockpairs            = dblockpairs,
-                dsch                   = dsch,
-                bhat_ols               = .bhat,
-                modstats               = modstats,
-                tab_patterns           = tab_patterns,
-                G                      = G,
-                R                      = R,
-                target_blocks          = target_blocks,
-                target_contrast_blocks = target_contrast_blocks,
-                adjusted_growth        = do.call("rbind",lapply(dsch, function(x){ x$est }))))
+    .r <- list(control                = control,
+               target                 = target,
+               target_contrast        = target_contrast,
+               dblock                 = dblock,
+               dblockpairs            = dblockpairs,
+               dsch                   = dsch,
+               bhat_ols               = .bhat,
+               modstats               = modstats,
+               tab_patterns           = tab_patterns,
+               G                      = G,
+               R                      = R,
+               target_blocks          = target_blocks,
+               target_contrast_blocks = target_contrast_blocks,
+               adjusted_growth        = do.call("rbind",lapply(dsch, function(x){ x$est })))
+    if(control$return_d){
+        .r$d <- d
+    }
+    return(.r)
 }
