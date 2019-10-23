@@ -1117,7 +1117,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     for(s in 1:length(dsch)){
         x <- dsch[[s]]
         b <- x$oblocks
-
+        n <- x$tab$nsb
+        gconfig <- paste(sort(unique(x$tab$grade)), collapse="")
+        
         ## proceed if the school has measures for the target blocks
         ## (and if needed, target_contrast blocks)
         validschool <- any(b %in% target_blockids)
@@ -1125,14 +1127,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             validschool <- validschool && any(b %in% target_contrast_blockids)
         }
         
-        if(validschool){            
+        if(validschool){
             ## make lambda
-            n      <- x$tab$nsb
-            lambda <- rep(0.0, x$nblock)
-            wh     <- which(b %in% target_blockids)
-            ntot   <- sum(n[wh])
+            lambda  <- rep(0.0, x$nblock)
+            wh      <- which(b %in% target_blockids)
+            ntarget <- sum(n[wh])
             if(target["weights"]=="n"){
-                lambda[wh] <- n[wh] / ntot
+                lambda[wh] <- n[wh] / ntarget
             } else {
                 lambda[wh] <- 1/length(wh)
             }
@@ -1151,9 +1152,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## create matrix to store weights for direct and BLP estimators.
             ## also stored indicator "obs" which indicates whether there
             ## are observed data for the corresponding block.
-            weights           <- matrix(0, ncol=3, nrow=B)
-            rownames(weights) <- .blocknames
-            colnames(weights) <- c("obs","direct","blp")
+            weights             <- matrix(0, ncol=3, nrow=B)
+            rownames(weights)   <- .blocknames
+            colnames(weights)   <- c("obs","direct","blp")
             weights[b,"obs"]    <- 1
             weights[b,"direct"] <- lambda
             
@@ -1177,11 +1178,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             
             ## package up and save
-            x$est         <- data.frame(school = x$school, ntot = ntot, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
-            x$est$gconfig <- paste(sort(unique(x$tab$grade)), collapse="")
+            x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = ntarget, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
             x$weights     <- weights
-            dsch[[s]]     <- x
+        } else { ## school has insufficient observed data for direct estimator of target
+            x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = 0, ncontrast = 0, est.direct = NA, mse.direct = NA, est.blp = NA, mse.blp = NA, prmse.null = NA, prmse.direct = NA, stringsAsFactors=FALSE)
         }
+        dsch[[s]]     <- x
     }
 
     ## ####################
@@ -1200,7 +1202,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                R                      = R,
                target_blocks          = target_blocks,
                target_contrast_blocks = target_contrast_blocks,
-               adjusted_growth        = do.call("rbind",lapply(dsch, function(x){ x$est })))
+               aggregated_growth      = do.call("rbind",lapply(dsch, function(x){ x$est })))
     if(control$return_d){
         .r$d <- d
     }

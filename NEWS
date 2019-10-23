@@ -1,10 +1,11 @@
 TODOs:
 
-## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
+## fix behavior of assigning aggregate growth with a contrast where ncontrast =
+   0.  i think if school had data in target, but we were computing a contrast,
+   it would either crash or result in nonsense.  with contrast, there needs to
+   be data in both the target and target_contrast to get an estimate
 
-## change BLP calculation so that all schools get BLP even if they don't have
-## data in the target blocks, in which case they just get what's implied by the
-## FE structure.  Need to make sure that MSE calculation is correct in that case.
+## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
 
 ## simplify how weights are computed in known mean/estimated mean cases and
    maybe bypass blp() function entirely
