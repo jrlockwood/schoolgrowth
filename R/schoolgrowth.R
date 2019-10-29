@@ -65,7 +65,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     if(is.null(control$keepDiag_first)){
-        control$keepDiag_first <- TRUE
+        control$keepDiag_first <- FALSE
     }
 
     if(is.null(control$return_d)){
@@ -913,7 +913,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## adjustment (which generally will not preserve fixed zeros).
         ##
         ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
-        ## control$keepDiag_first (default TRUE)
+        ## control$keepDiag_first (default FALSE)
         e <- eigen(Gstar)
         if(any(e$values < -sqrt(.Machine$double.eps))){
             if(!control$quietly){
