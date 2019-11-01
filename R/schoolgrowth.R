@@ -100,11 +100,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         stop("there are schools with fewer than control$school_nmin records")
     }
     
-    ## stop if there are fewer tota records than control$pattern_nmin
-    if(nrow(d) < control$pattern_nmin){
-        stop("control$pattern_nmin is larger than the total number of observations")
-    }
-    
     ## create block-level dataset "dblock" providing unique combinations of year*grade*subject
     ## and their block labels and IDs
     ## NOTE: don't use unique() due to excessive RAM usage.
@@ -493,15 +488,19 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     tmp$cpattern <- tmp$pattern
     tmp$cpattern[which(tmp$pcount < control$pattern_nmin)] <- "collapsed"
     if(any(tmp$cpattern=="collapsed")){
-        .w <- which(tmp$cpattern == "collapsed")
-        .n <- sum(tmp$pcount[.w])
-        while(.n < control$pattern_nmin){
-            nextsmallest <- .w[1]-1
-            tmp$cpattern[nextsmallest] <- "collapsed"
-            .n <- .n + tmp$pcount[nextsmallest]
-            .w  <- c(nextsmallest,.w)
+        if(!all(tmp$cpattern=="collapsed")){
+            .w <- which(tmp$cpattern == "collapsed")
+            .n <- sum(tmp$pcount[.w])
+            while(.n < control$pattern_nmin){
+                nextsmallest <- .w[1]-1
+                tmp$cpattern[nextsmallest] <- "collapsed"
+                .n <- .n + tmp$pcount[nextsmallest]
+                .w  <- c(nextsmallest,.w)
+            }
+            tmp$pcount[.w] <- .n
+        } else {
+            tmp$pcount <- tmp$pcount[1]  ## dumb placeholder
         }
-        tmp$pcount[.w] <- .n
     }
     if(!control$quietly){
         cat(paste("Number of patterns after collapsing (control$pattern_nmin=",control$pattern_nmin,"): ", length(unique(tmp$cpattern)),"\n",sep=""))
