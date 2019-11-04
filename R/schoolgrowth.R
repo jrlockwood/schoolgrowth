@@ -71,6 +71,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$return_d)){
         control$return_d <- FALSE
     }
+
+    if(is.null(control$mse_blp_chk)){
+        control$mse_blp_chk <- FALSE
+    }
     
     mean_supplied <- !is.null(control$mean_varname)
     R_supplied    <- !is.null(control$R)
@@ -1087,6 +1091,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ImQ   <- diag(nb) - Q
 
             x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[x$oblocks,x$oblocks,drop=F] %*% t(Q))
+            if(control$mse_blp_chk){
+                ## check MSE using alt formula from Das, Jiang and Rao (2004)
+                g1  <- .G - (.G %*% .vinv %*% .G)
+                tmp <- diag(nb) - (.vinv %*% .G)
+                g2  <- t(tmp) %*% (matrix(1.0, ncol=nb, nrow=nb) / sum(.vinv)) %*% tmp
+                x$mse_blp_chk <- g1 + g2
+                if(max(abs(x$mse_blp - x$mse_blp_chk)) > 1e-10){
+                    stop(paste0("mse_blp_chk failed: school ",s))
+                }
+            }
             x$Q       <- Q
             x$var_schoolFE <- 1.0/sum(.vinv) ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}
             dsch[[s]] <- x

@@ -1,13 +1,14 @@
 TODOs:
 
-## think about second-order corrected variance estimator of GLS estimator of school
-   fixed effect, to see if we can remove downward bias in estimated sampling variance
-   of estimated school FE
+## think about second-order corrected variance estimator of GLS estimator of
+   school fixed effect, to see if we can remove downward bias in estimated
+   sampling variance of estimated school FE.  probably do the same thing for the
+   second-order corrected MSE estimator of EBLP
 
 ## rename muhat when mean_supplied to mu_supplied, and make all mu variable names more sane
 
 ## simplify how weights are computed in known mean/estimated mean cases and
-   maybe bypass blp() function entirely
+   bypass blp() function entirely
 
 ## fix behavior of assigning aggregate growth with a contrast where ncontrast =
    0.  i think if school had data in target, but we were computing a contrast,
