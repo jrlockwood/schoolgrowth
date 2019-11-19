@@ -49,11 +49,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     if(is.null(control$pattern_nmin)){
-        control$pattern_nmin <- 30
+        control$pattern_nmin <- 100
     }
     
     if(is.null(control$blockpair_student_nmin)){
-        control$blockpair_student_nmin <- 50
+        control$blockpair_student_nmin <- 100
     }
     
     if(is.null(control$blockpair_school_nmin)){
