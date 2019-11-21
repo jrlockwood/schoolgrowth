@@ -604,9 +604,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     ## first fit school FE only, no blocks, for R^2 calculation letting schools
     ## have as much as possible
-    d$muhat <- ave(d$Y, d$school)
-    .e      <- sum( (d$Y - d$muhat)^2 ) / (nrow(d) - length(unique(d$school)))
+    d$tmp   <- ave(d$Y, d$school)
+    .e      <- sum( (d$Y - d$tmp)^2 ) / (nrow(d) - length(unique(d$school)))
     modstats["Rsq_sfe"] <- 1.0 - (.e / modstats["varY"])
+    d$tmp   <- NULL
     
     ## now fit the actual model with school FE and block/pattern FE
     .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
@@ -617,35 +618,31 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     .xpx    <- crossprod(.X)
     .xpy    <- crossprod(.X, d$Y)
     .bhat   <- solve(.xpx, .xpy)
-    d$muhat <- as.vector(.X %*% .bhat)
-    stopifnot(max(abs(tapply(d$muhat, d$school, mean) - tapply(d$Y, d$school, mean))) < 1e-6)
-    stopifnot(max(abs(tapply(d$muhat, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
+    d$tmp   <- as.vector(.X %*% .bhat)
+    stopifnot(max(abs(tapply(d$tmp, d$school, mean) - tapply(d$Y, d$school, mean))) < 1e-6)
+    stopifnot(max(abs(tapply(d$tmp, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
+    .sse    <- sum( (d$Y - d$tmp)^2 )
+    d$tmp   <- NULL
     
     ## add estimated means based on block/pattern FE but not including the school fixed effects,
     ## which are treated as fixed and known for the remainder of the estimation steps
     wh           <- grep("bpid", colnames(.X))
-    d$muhat_bp   <- as.vector(.X[,wh] %*% .bhat[wh])
+    d$alpha      <- as.vector(.X[,wh] %*% .bhat[wh])
     .bhat        <- as.vector(.bhat)
     names(.bhat) <- colnames(.X)
         
-    ## put schoolFE on dsch (provisional for now; replaced with GLS estimator later)
-    tmp <- d[!duplicated(d$school),c("school","schoolid")]
-    tmp$schoolFE <- .bhat[paste0("schoolid",tmp$schoolid)]
-    stopifnot( !any(is.na(tmp$schoolFE)) )
+    ## put estimated school FE on dsch (provisional for now; replaced with GLS estimator later)
+    tmp    <- d[!duplicated(d$school),c("school","schoolid")]
+    tmp$mu <- .bhat[paste0("schoolid",tmp$schoolid)]
+    stopifnot( !any(is.na(tmp$mu)) )
     for(s in 1:length(dsch)){
-        dsch[[s]]$schoolFE <- tmp$schoolFE[which(tmp$school == dsch[[s]]$school)]
+        dsch[[s]]$mu <- tmp$mu[which(tmp$school == dsch[[s]]$school)]
     }
 
-    rm(.X,.xpx,.xpy); gc()
-    modstats["varE"]     <- sum( (d$Y - d$muhat)^2 ) / (nrow(d) - .mdf)
+    rm(.X,.xpx,.xpy,tmp); gc()
+    modstats["varE"]     <- .sse / (nrow(d) - .mdf)
     modstats["Rsq_tot"]  <- 1.0 - (modstats["varE"]/modstats["varY"])
-    
-    ## cat("CHECKING MATRIX CALCS")
-    ## d$muhat_chk <- fitted(lm(Y ~ as.factor(school) + bpid, data=d))
-    ## print(max(abs(d$muhat - d$muhat_chk)))
-    ## d$muhat_chk <- NULL
-
-    
+        
     ## ############################################################
     ## calculate and check various school*block aggregates, which will be used
     ## for estimating G and ultimately for doing the BLP calculation
@@ -653,11 +650,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!control$quietly){
         cat("Computing and checking school*block aggregate measures...\n")
     }
-    d$Y_sb         <- ave(d$Y, d$school, d$block)
-    d$Y_sb_tilde   <- ave(d$Y - d$muhat_bp, d$school, d$block)
-    d$nsb      <- ave(rep(1,nrow(d)), d$school, d$block, FUN=sum)
+    d$alpha_sb   <- ave(d$alpha,          d$school, d$block)
+    d$Y_sb       <- ave(d$Y,              d$school, d$block)
+    d$Y_sb_tilde <- d$Y_sb - d$alpha_sb
+    d$nsb        <- ave(rep(1,nrow(d)), d$school, d$block, FUN=sum)
     
-    tmp        <- d[!duplicated(paste(d$school, d$block)), c("school","grade","year","subject","block","blockid","nsb","muhat","Y_sb","Y_sb_tilde")]
+    tmp        <- d[!duplicated(paste(d$school, d$block)), c("school","grade","year","subject","block","blockid","nsb","alpha_sb","Y_sb","Y_sb_tilde")]
     tmp        <- tmp[order(tmp$school, tmp$blockid),]
     stopifnot(nrow(tmp) == length(unique(paste(d$school, d$block))))
     tmp        <- split(tmp, tmp$school)
@@ -667,7 +665,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     stopifnot(all(unlist(lapply(dsch, function(x){ diag(x$N)[x$tab$blockid] - x$tab$nsb })) == 0))
-    stopifnot(max(abs(sapply(dsch, function(x){ x$schoolFE - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats["varY"]*1e-10)
+    stopifnot(max(abs(sapply(dsch, function(x){ x$mu - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats["varY"]*1e-10)
 
     ## ########################################################
     ## compute provisional variance/covariance matrix "R_sb" of errors in aggregate
@@ -743,7 +741,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             Is      <- sparseMatrix(i=b,j=b,x=rep(1,x$nblock), dims=c(B,B), symmetric=TRUE)
             me_adj  <- (Is - Pis) %*% x$R_sb %*% t(Is - Pis)
-            .y      <- sparseMatrix(i = rep(1,x$nblock), j = b, x = x$tab$Y_sb_tilde - x$schoolFE, dims=c(1,B))
+            .y      <- sparseMatrix(i = rep(1,x$nblock), j = b, x = x$tab$Y_sb_tilde - x$mu, dims=c(1,B))
             adj_observed_moments <- adj_observed_moments + (crossprod(.y) - me_adj)
             ## NOTE: equivalent calculation:
             ##
@@ -981,9 +979,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     stopifnot(length(unique(d$sbid)) == N)
     
     ## block*pattern means which are treated as fixed offsets
-    muhat_bp <- tapply(d$muhat_bp, d$sbid, mean)
-    stopifnot(all(names(muhat_bp) == d$sbid[!duplicated(d$sbid)]))
-    muhat_bp <- as.vector(muhat_bp)       
+    alpha_sb <- as.vector(unlist(lapply(dsch, function(x){ x$tab$alpha_sb})))
     
     ## "Y"
     Y <- matrix(as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb_tilde }))), ncol=1)
@@ -1017,11 +1013,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
     .bgls       <- solve(.Xp_Vinv_X, (.Xp_Vinv %*% Y))
     for(s in 1:length(dsch)){
-        dsch[[s]]$schoolFE  <- .bgls[s,1]
-        dsch[[s]]$tab$muhat <- NULL
+        dsch[[s]]$mu  <- .bgls[s,1]
     }
     .Xbgls      <- .X %*% .bgls
-    .blp        <- muhat_bp + as.vector(.Xbgls + (bigG %*% Vinv %*% (Y - .Xbgls)))
+    .blp        <- alpha_sb + as.vector(.Xbgls + (bigG %*% Vinv %*% (Y - .Xbgls)))
     
     ## summaries of BLUPs
     if(!control$quietly){
@@ -1061,22 +1056,22 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 stop(paste0("mse_blp_chk failed: school ",s))
             }
         }
-        x$Q       <- Q
-        x$var_schoolFE <- 1.0/sum(.vinv) ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}
-        dsch[[s]] <- x
+        x$Q         <- Q
+        x$var_muhat <- 1.0/sum(.vinv) ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}
+        dsch[[s]]   <- x
     }
     stopifnot(.pos == N)
     rm(.blp,Y,.Xbgls,bigG,Vinv,.X,.Xp_Vinv_X,.Xp_Vinv); gc()
 
-    ## use schoolFE and var_schoolFE to estimate variance in individual
-    ## growth attributable to schoolFE, where schools are weighted according
-    ## to the total number of attached growth scores, and where we assume
-    ## that errors for estimated FE by school are uncorrelated, with
-    ## is an approximation
+    ## use estimated school fixed effect and associated estimated error variance to
+    ## estimate variance in individual growth attributable to school fixed effects,
+    ## where schools are weighted according to the total number of attached growth
+    ## scores, and where we assume that errors for estimated FE by school are
+    ## uncorrelated, which is an approximation
     .l    <- sapply(dsch, function(x){ sum(x$tab$nsb) })
     .l    <- .l/sum(.l)
-    .y    <- sapply(dsch, function(x){ x$schoolFE })
-    .s    <- sapply(dsch, function(x){ x$var_schoolFE })
+    .y    <- sapply(dsch, function(x){ x$mu })
+    .s    <- sapply(dsch, function(x){ x$var_muhat })
     modstats["estimated_variance_among_schools"] <- (sum(.l * .y^2) - sum(.l * .s)) - ( (sum(.l * .y))^2 - sum(.l^2 * .s) )
     modstats["estimated_percvar_among_schools"]  <- modstats["estimated_variance_among_schools"] / modstats["varY"]
     

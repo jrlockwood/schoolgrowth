@@ -3,10 +3,6 @@ TODOs:
 ## maybe remove the big GLS computation of school FE and split things out by
    school, to make it closer to how we might do things when we jackknife
 
-## rename muhat when mean_supplied to mu_supplied, and make all mu variable
-   names more sane and align with paper (alpha for block-by-pattern, rename
-   schoolFE to "mu" again consistent with paper)
-
 ## maybe move computation of lambda and related information
    to earlier in the code
 
