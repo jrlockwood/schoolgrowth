@@ -645,7 +645,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         
     ## ############################################################
     ## calculate and check various school*block aggregates, which will be used
-    ## for estimating G and ultimately for doing the BLP calculation
+    ## for estimating G and ultimately for doing the EBLP calculation
     ## ############################################################
     if(!control$quietly){
         cat("Computing and checking school*block aggregate measures...\n")
@@ -911,7 +911,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## ###################################################
     ## now that G estimation is done, go back and force R to be PSD if needed.
-    ## NOTE: now using nearPD2 function to maintain fixed zeros, and as with
+    ## NOTE: use nearPD2 function to maintain fixed zeros, and as with
     ## G*, there is a sequential decision about how to compute the adjusted matrix
     ## ###################################################
     if(!R_supplied){    
@@ -945,7 +945,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             dblockpairs$R <- R[lower.tri(R, diag=TRUE)]
 
-            ## adjust R_sb elements of dsch as well, since these are used in BLP
+            ## adjust R_sb elements of dsch as well, since these are used in EBLP
             for(s in 1:length(dsch)){
                 x$R_sb     <- x$Ntilde * R
                 x$R_sb     <- as(x$R_sb, "symmetricMatrix")
@@ -954,23 +954,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     ## #############################################
-    ## get GLS estimator of school FE, and BLPs of random effects,
-    ## using brute-force estimation with sparse matrices
-    ##
-    ## NOTE: contribution of school*block FE treated as fixed and known
+    ## get GLS estimator of school FE, and EBLPs of random effects,
+    ## using brute-force estimation with sparse matrices, treating
+    ## block*pattern contributions for each school as fixed
     ##
     ## NOTE: "Z" matrix in standard notation is I here because Y is
-    ## directly additive in the school*block random effects
-    ##
-    ## NOTE: I tried the Henderson mixed model equations but found cases
-    ## where this disagreed with the brute-force solution, possibly because
-    ## the HMME require R^{-1} and G^{-1}, neither of which necessarily
-    ## exist here, and it's possible the Schur results that the HMME rely
-    ## on are not valid unless R and G are invertible.
-    ##
+    ## directly additive in the school*block random effects, and
+    ## "X" matrix in standard notation is just a vector of 1.
     ## #############################################
     if(!control$quietly){
-        cat("Computing GLS estimator and raw BLPs...\n")
+        cat("Computing GLS estimator and raw EBLPs...\n")
     }
         
     stopifnot(all(sapply(dsch, function(x){ x$nblock == nrow(x$tab)})))
@@ -1007,7 +1000,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         as(.tmp, "symmetricMatrix")
     }))
         
-    ## brute force using expression for GLS estimator and BLPs of random
+    ## brute force using expression for GLS estimator and EBLPs of random
     ## effects at the school*block level
     .Xp_Vinv    <- crossprod(.X, Vinv)
     .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
@@ -1018,16 +1011,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     .Xbgls      <- .X %*% .bgls
     .blp        <- alpha_sb + as.vector(.Xbgls + (bigG %*% Vinv %*% (Y - .Xbgls)))
     
-    ## summaries of BLUPs
+    ## summaries of EBLPS
     if(!control$quietly){
-        cat(paste("(MM) range of raw BLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
+        cat(paste("(MM) range of raw EBLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
         tmp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb })))
-        cat(paste("(MM) cor(Y,raw BLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
+        cat(paste("(MM) cor(Y,raw EBLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
     }
     
     ## MSE estimators, treating block*pattern FE as known but school FE as unknown
     if(!control$quietly){
-        cat("Computing MSE estimates of raw BLPs by school (may be slow)...\n")
+        cat("Computing MSE estimates of raw EBLPs by school (may be slow)...\n")
     }
     .pos <- 0
     for(s in 1:length(dsch)){
@@ -1076,10 +1069,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     modstats["estimated_percvar_among_schools"]  <- modstats["estimated_variance_among_schools"] / modstats["varY"]
     
     ## #############################################
-    ## BLP and MSE calculation for weighted composite
+    ## EBLP and MSE calculation for weighted composite
     ## #############################################
     if(!control$quietly){
-        cat("Computing composite BLPs and MSE estimates...\n")
+        cat("Computing composite EBLPs and MSE estimates...\n")
     }
     for(s in 1:length(dsch)){
         x <- dsch[[s]]
@@ -1116,7 +1109,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 }
             }
 
-            ## create matrix to store weights for direct and BLP estimators.
+            ## create matrix to store weights for direct and EBLP estimators.
             ## also stored indicator "obs" which indicates whether there
             ## are observed data for the corresponding block.
             weights             <- matrix(0, ncol=3, nrow=B)

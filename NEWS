@@ -3,9 +3,6 @@ TODOs:
 ## maybe remove the big GLS computation of school FE and split things out by
    school, to make it closer to how we might do things when we jackknife
 
-## maybe move computation of lambda and related information
-   to earlier in the code
-
 ## think about second-order corrected variance estimator of GLS estimator of
    school fixed effect, to see if we can remove downward bias in estimated
    sampling variance of estimated school FE.  probably do the same thing for the
