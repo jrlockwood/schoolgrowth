@@ -1,4 +1,4 @@
-export(blp, schoolgrowth)
+export(schoolgrowth)
 
 importFrom("stats", "ave", "cov", "na.omit", "reshape", "var", "weighted.mean")
 
