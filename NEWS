@@ -9,11 +9,6 @@ TODOs:
    second-order corrected MSE estimator of EBLP
    **maybe approximate with jackknifing schools for estimating G
 
-## fix behavior of assigning aggregate growth with a contrast where ncontrast =
-   0.  i think if school had data in target, but we were computing a contrast,
-   it would either crash or result in nonsense.  with contrast, there needs to
-   be data in both the target and target_contrast to get an estimate
-
 ## fix global binding warnings in R CMD check
 
 ## allow target to be a list of named vectors so that we get BLPs for a vector

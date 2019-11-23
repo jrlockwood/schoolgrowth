@@ -316,7 +316,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: don't use combn() because we also want the diagonals and we
     ## need them in the correct positions
     ##
-    ## NOTE: we order the elements of dblockpairs to fill the lower triangle
+    ## NOTE: elements of dblockpairs ordered to fill the lower triangle
     ## of a BxB symmetric matrix using column-major order
     ## #################################################################
     dblockpairs <- data.frame(iB = 1:B2, blockidi = 0L, blockidj = 0L)
@@ -530,15 +530,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     ## #######################################################
-    ## compute estimate of residual covariance matrix using within-school,
-    ## within-block, within-pattern deviations
+    ## Estimate R using within-school, within-block, within-pattern deviations
     ## ########################################################
     if(!R_supplied){
         d$sbp  <- as.integer(as.factor(paste(d$school, d$blockid, d$patternid)))
         d$nsbp <- ave(rep(1,nrow(d)), d$sbp, FUN=sum)
         d$e    <- d$Y - ave(d$Y, d$sbp)
         
-        ## residual variance-covariance estimates, and numbers of students contributing to each
         dblockpairs$R      <- 0.0
         dblockpairs$R_nstu <- 0L
 
@@ -593,7 +591,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     ## ###################################################################
-    ## compute OLS estimates of regression coefficients
+    ## compute OLS estimates of (alpha, mu)
     ## ###################################################################
     if(!control$quietly){
         cat("Computing OLS estimates of regression coefficients...\n")
@@ -618,11 +616,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     .xpx    <- crossprod(.X)
     .xpy    <- crossprod(.X, d$Y)
     .bhat   <- solve(.xpx, .xpy)
-    d$tmp   <- as.vector(.X %*% .bhat)
-    stopifnot(max(abs(tapply(d$tmp, d$school, mean) - tapply(d$Y, d$school, mean))) < 1e-6)
-    stopifnot(max(abs(tapply(d$tmp, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
-    .sse    <- sum( (d$Y - d$tmp)^2 )
-    d$tmp   <- NULL
+    tmp     <- as.vector(.X %*% .bhat)
+    stopifnot(max(abs(tapply(tmp, d$school, mean) - tapply(d$Y, d$school, mean))) < 1e-6)
+    stopifnot(max(abs(tapply(tmp, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
+    .sse    <- sum( (d$Y - tmp)^2 )
     
     ## add estimated means based on block/pattern FE but not including the school fixed effects,
     ## which are treated as fixed and known for the remainder of the estimation steps
@@ -718,7 +715,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     posB[lower.tri(posB, diag=TRUE)] <- 1:B2
     
     ## loop over schools
-    ## t1 <- proc.time()
     for(s in 1:length(dsch)){
         x        <- dsch[[s]]
         stopifnot(all(x$oblocks == x$tab$blockid))
@@ -819,8 +815,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         
         dsch[[s]] <- x
     }
-    ## t2 <- proc.time()
-    ## print(t2["elapsed"] -t1["elapsed"])
     rm(Zs0); gc()
     
     ## #########################################################
