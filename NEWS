@@ -1,8 +1,5 @@
 TODOs:
 
-## maybe remove the big GLS computation of school FE and split things out by
-   school, to make it closer to how we might do things when we jackknife
-
 ## think about second-order corrected variance estimator of GLS estimator of
    school fixed effect, to see if we can remove downward bias in estimated
    sampling variance of estimated school FE.  probably do the same thing for the
@@ -20,7 +17,14 @@ TODOs:
    at the OLS stage, so that the variance due to this term can be incorporated
    into the MSE estimator for the BLP
 
-## for help file: note that code forces the end-user to think about and confront
+
+## HELP FILE NOTES
+
+## note that code forces the end-user to think about and confront
    strata directly, rather than having an automatic solution implemented that
    might not do what someone wants.  the code will not run without
    connectedness.
+
+## note that jackknife relies on random partitioning of schools into batches,
+   and for replicability, user will have to set.seed() outside the function
+   

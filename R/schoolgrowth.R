@@ -75,9 +75,19 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$mse_blp_chk)){
         control$mse_blp_chk <- FALSE
     }
+
+    if(is.null(control$jackknife)){
+        control$jackknife <- FALSE
+    }
     
     R_supplied    <- !is.null(control$R)
     G_supplied    <- !is.null(control$G)
+
+    ## since jackknife is designed to deal with variation in estimated G, it cannot
+    ## be used when G is supplied
+    if(G_supplied && control$jackknife){
+        stop("jackknife applied only when G is estimated")
+    }
     
     ## stop if there are any schools with fewer than control$school_nmin records
     if(any(as.vector(table(d$school)) < control$school_nmin)){
@@ -621,7 +631,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     stopifnot(max(abs(tapply(tmp, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
     .sse    <- sum( (d$Y - tmp)^2 )
     
-    ## add estimated means based on block/pattern FE but not including the school fixed effects,
+    ## add estimated means based on block/pattern FE (but not including the school fixed effects),
     ## which are treated as fixed and known for the remainder of the estimation steps
     wh           <- grep("bpid", colnames(.X))
     d$alpha      <- as.vector(.X[,wh] %*% .bhat[wh])
@@ -665,6 +675,22 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     stopifnot(max(abs(sapply(dsch, function(x){ x$mu - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats["varY"]*1e-10)
 
     ## ########################################################
+    ## if jackknife, get number of schools contributing to G estimation (those with nblock > 1),
+    ## and among those schools, assign them which jackknife batch they will be excluded from,
+    ## using approximately the square root of the number of contributing schools as the number
+    ## of jackknife batches
+    ## ########################################################
+    if(control$jackknife){
+        Sj <- sum(sapply(dsch, function(x){ x$nblock > 1 }))
+        J  <- floor(sqrt(Sj))
+        .r <- Sj %% J
+    }
+        
+        
+    
+    
+    
+    ## ########################################################
     ## compute provisional variance/covariance matrix "R_sb" of errors in aggregate
     ## measures, as well as pieces needed for the contribution of the school to
     ## the WLS estimator for the elements of G.
@@ -698,9 +724,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## column-major lower triangle of G*, the (B-1)x(B-1) full-rank covariance matrix.
     ##
     ## NOTE: sparse tended to be slower here so we make it dense, which is fine
-    ## because the matrix actually ends up dense.  G_Z will accumulate across
+    ## because the matrix actually ends up dense.  Zsum will accumulate across
     ## schools and each school's contribution will be initialized to Zs0.
-    G_Z <- Zs0  <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
+    Zsum <- Zs0  <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
     
     ## create vectors that will be used to mash matrix elements together as needed.
     ## posd is vector of diagonal positions for (B-1)x(B-1) matrix lower triangle.
@@ -801,7 +827,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 }
             }
             Zs[,posd] <- Zs[,posd] / 2.0
-            G_Z <- G_Z + Zs
+            Zsum      <- Zsum + Zs
             
             ## CHECK: does Zs do what is intended?
             ##
@@ -836,7 +862,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
         stopifnot(length(rkeep) == length(.Y))
         .Y     <- .Y[rkeep]
-        G_Z    <- G_Z[rkeep,]
+        Zsum   <- Zsum[rkeep,]
 
         tmp    <- subset(dblockpairs, G_est)
         stopifnot(all(diff(tmp$iB) > 0))
@@ -846,13 +872,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
         stopifnot(all(diff(tmp$iBminus1) == 1))
         ckeep  <- tmp$G_est
-        G_Z    <- G_Z[,ckeep]
+        Zsum   <- Zsum[,ckeep]
 
         ## solve for estimable parameters and construct Gstar
         tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
         stopifnot(all(diff(tmp$iBminus1) > 0))        
-        .xpx   <- t(G_Z) %*% .W %*% G_Z
-        .xpy   <- t(G_Z) %*% .W %*% .Y
+        .xpx   <- t(Zsum) %*% .W %*% Zsum
+        .xpy   <- t(Zsum) %*% .W %*% .Y
         tmp$gstar <- as.vector(solve(.xpx, .xpy))
         Gstar  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
         
@@ -898,7 +924,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
         G     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$G, dims=c(B,B), symmetric=TRUE)
         rownames(G) <- colnames(G) <- .blocknames
-        rm(.Y,.W,.xpx,.xpy,Gstar,G_Z)
+        rm(.Y,.W,.xpx,.xpy,Gstar,Zsum)
     } else {
         dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
     }
@@ -949,90 +975,44 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     ## #############################################
     ## get GLS estimator of school FE, and EBLPs of random effects,
-    ## using brute-force estimation with sparse matrices, treating
-    ## block*pattern contributions for each school as fixed
+    ## treating block*pattern contributions for each school as fixed
     ##
     ## NOTE: "Z" matrix in standard notation is I here because Y is
     ## directly additive in the school*block random effects, and
     ## "X" matrix in standard notation is just a vector of 1.
     ## #############################################
     if(!control$quietly){
-        cat("Computing GLS estimator and raw EBLPs...\n")
+        cat("Computing GLS estimators, raw EBLPs, and MSEs (may be slow)...\n")
     }
-        
-    stopifnot(all(sapply(dsch, function(x){ x$nblock == nrow(x$tab)})))
-    N <- sum(sapply(dsch, function(x){ x$nblock }))
-    d$sbid <- paste(d$school, gsub(" ","0",formatC(as.character(d$blockid))), sep="_")
-    stopifnot(length(unique(d$sbid)) == N)
-    
-    ## block*pattern means which are treated as fixed offsets
-    alpha_sb <- as.vector(unlist(lapply(dsch, function(x){ x$tab$alpha_sb})))
-    
-    ## "Y"
-    Y <- matrix(as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb_tilde }))), ncol=1)
-    stopifnot( (nrow(Y) == N) && all(d$Y_sb_tilde[!duplicated(d$sbid)] == Y) )
-    
-    ## "X" design matrix for school FE only
-    tmp  <- d[!duplicated(d$sbid),"schoolid",drop=FALSE]
-    .X   <- sparse.model.matrix(~schoolid - 1, data=tmp, contrasts.arg=list(schoolid="contr.treatment"))
-    stopifnot( (nrow(.X) == N) && all(gsub("schoolid","",colnames(.X)) == names(dsch)))
-    
-    ## "bigG" = G blocked to schools
-    bigG  <- bdiag(lapply(dsch, function(x){
-        .b <- x$oblocks
-        as(G[.b,.b,drop=FALSE], "symmetricMatrix")
-    }))
-    
-    ## V^{-1}
-    Vinv <- bdiag(lapply(dsch, function(x){
-        .b   <- x$oblocks
-        .tmp <- solve(G[.b,.b,drop=FALSE] + x$R_sb[.b,.b,drop=FALSE])
-        if(max(abs(.tmp - t(.tmp))) > 1e-8){
+
+    for(s in 1:length(dsch)){
+        x     <- dsch[[s]]
+        nb    <- x$nblock
+        b     <- x$oblocks
+
+        .Y    <- matrix(x$tab$Y_sb_tilde, ncol=1)
+        .X    <- matrix(1, ncol=1, nrow=nb)
+        .G    <- as(G[b,b,drop=FALSE], "symmetricMatrix")
+        .vinv <- solve(.G + x$R_sb[b,b,drop=FALSE])
+        if(max(abs(.vinv- t(.vinv))) > 1e-8){
             warning("matrix of questionable symmetry arose in computation of V^{-1}")
         }
-        .tmp <- forceSymmetric(.tmp)
-        as(.tmp, "symmetricMatrix")
-    }))
-        
-    ## brute force using expression for GLS estimator and EBLPs of random
-    ## effects at the school*block level
-    .Xp_Vinv    <- crossprod(.X, Vinv)
-    .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
-    .bgls       <- solve(.Xp_Vinv_X, (.Xp_Vinv %*% Y))
-    for(s in 1:length(dsch)){
-        dsch[[s]]$mu  <- .bgls[s,1]
-    }
-    .Xbgls      <- .X %*% .bgls
-    .blp        <- alpha_sb + as.vector(.Xbgls + (bigG %*% Vinv %*% (Y - .Xbgls)))
-    
-    ## summaries of EBLPS
-    if(!control$quietly){
-        cat(paste("(MM) range of raw EBLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
-        tmp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb })))
-        cat(paste("(MM) cor(Y,raw EBLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
-    }
-    
-    ## MSE estimators, treating block*pattern FE as known but school FE as unknown
-    if(!control$quietly){
-        cat("Computing MSE estimates of raw EBLPs by school (may be slow)...\n")
-    }
-    .pos <- 0
-    for(s in 1:length(dsch)){
-        x    <- dsch[[s]]
-        nb   <- x$nblock
-        .i   <- (.pos+1):(.pos+nb)
-        .pos <- max(.i)
-        
-        x$tab$blp <- .blp[.i]
-        
-        .vinv <- Vinv[.i,.i,drop=F]
-        .G    <- bigG[.i,.i,drop=F]
+        .vinv <- forceSymmetric(.vinv)
+        .vinv <- as(.vinv, "symmetricMatrix")
+
+        ## GLS estimator of mu, plus EBLP at school*block level
+        .Xp_Vinv    <- crossprod(.X, .vinv)
+        .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
+        x$mu        <- as.vector(solve(.Xp_Vinv_X, (.Xp_Vinv %*% .Y)))
+        x$tab$blp   <- x$tab$alpha_sb + as.vector(x$mu + (.G %*% .vinv %*% (.Y - x$mu)))
+
+        ## MSE estimators, treating alpha_sb as known
         H     <- (matrix(1.0, ncol=nb, nrow=nb) %*% .vinv) / sum(.vinv)
         ImH   <- diag(nb) - H
         Q     <- H + ((.G %*% .vinv) %*% ImH) ## NOTE: rowsums==1, useful for weights
         ImQ   <- diag(nb) - Q
+        x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[b,b,drop=F] %*% t(Q))
         
-        x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[x$oblocks,x$oblocks,drop=F] %*% t(Q))
         if(control$mse_blp_chk){
             ## check MSE using alt formula from Das, Jiang and Rao (2004)
             g1  <- .G - (.G %*% .vinv %*% .G)
@@ -1044,17 +1024,26 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
         }
         x$Q         <- Q
-        x$var_muhat <- 1.0/sum(.vinv) ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}
+        ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}, conditional on known V        
+        x$var_muhat <- 1.0/sum(.vinv) 
         dsch[[s]]   <- x
     }
-    stopifnot(.pos == N)
-    rm(.blp,Y,.Xbgls,bigG,Vinv,.X,.Xp_Vinv_X,.Xp_Vinv); gc()
-
+    
+    ## summaries of EBLPS
+    if(!control$quietly){
+        .blp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$blp })))
+        tmp  <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb })))
+        cat(paste("(MM) range of raw EBLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
+        cat(paste("(MM) cor(Y,raw EBLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
+    }
+    
+    #####################################################################################
     ## use estimated school fixed effect and associated estimated error variance to
     ## estimate variance in individual growth attributable to school fixed effects,
     ## where schools are weighted according to the total number of attached growth
     ## scores, and where we assume that errors for estimated FE by school are
     ## uncorrelated, which is an approximation
+    #####################################################################################
     .l    <- sapply(dsch, function(x){ sum(x$tab$nsb) })
     .l    <- .l/sum(.l)
     .y    <- sapply(dsch, function(x){ x$mu })
@@ -1063,7 +1052,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     modstats["estimated_percvar_among_schools"]  <- modstats["estimated_variance_among_schools"] / modstats["varY"]
     
     ## #############################################
-    ## EBLP and MSE calculation for weighted composite
+    ## EBLP and MSE calculation for target
     ## #############################################
     if(!control$quietly){
         cat("Computing composite EBLPs and MSE estimates...\n")
