@@ -1,11 +1,5 @@
 TODOs:
 
-## think about second-order corrected variance estimator of GLS estimator of
-   school fixed effect, to see if we can remove downward bias in estimated
-   sampling variance of estimated school FE.  probably do the same thing for the
-   second-order corrected MSE estimator of EBLP
-   **maybe approximate with jackknifing schools for estimating G
-
 ## fix global binding warnings in R CMD check
 
 ## allow target to be a list of named vectors so that we get BLPs for a vector
@@ -16,6 +10,10 @@ TODOs:
 ## add cluster-robust SEs (at school level) for the block-by-pattern FE computed
    at the OLS stage, so that the variance due to this term can be incorporated
    into the MSE estimator for the BLP
+
+## allow user-supplied number of jackknife replications
+
+
 
 
 ## HELP FILE NOTES

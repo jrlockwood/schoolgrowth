@@ -86,7 +86,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## since jackknife is designed to deal with variation in estimated G, it cannot
     ## be used when G is supplied
     if(G_supplied && control$jackknife){
-        stop("jackknife applied only when G is estimated")
+        stop("jackknife applies only when G is estimated")
     }
     
     ## stop if there are any schools with fewer than control$school_nmin records
@@ -370,9 +370,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## create "dsch" master list that will hold all school-level information.
     ## ##################################################################
     tmp  <- sort(unique(d$school))
-    dsch <- vector(length(tmp), mode="list")
+    S    <- length(tmp)
+    dsch <- vector(S, mode="list")
     names(dsch) <- tmp
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         dsch[[s]]$school <- tmp[s]
     }
     
@@ -415,7 +416,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     tmp <- split(d[,c("school","stuid","blockid")], d$school)
     stopifnot(all(names(tmp) == names(dsch)))
     
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         .tab <- table(tmp[[s]]$stuid, tmp[[s]]$blockid)
         oblocks <- as.integer(colnames(.tab))
         stopifnot(all(oblocks %in% dblock$blockid) && all(diff(oblocks) > 0))
@@ -642,7 +643,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     tmp    <- d[!duplicated(d$school),c("school","schoolid")]
     tmp$mu <- .bhat[paste0("schoolid",tmp$schoolid)]
     stopifnot( !any(is.na(tmp$mu)) )
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         dsch[[s]]$mu <- tmp$mu[which(tmp$school == dsch[[s]]$school)]
     }
 
@@ -667,7 +668,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     stopifnot(nrow(tmp) == length(unique(paste(d$school, d$block))))
     tmp        <- split(tmp, tmp$school)
     stopifnot(all(sapply(tmp, function(x){ all(diff(x$blockid) > 0) })) && all(names(tmp) == names(dsch)))
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         dsch[[s]]$tab <- tmp[[s]]
     }
 
@@ -676,19 +677,40 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## ########################################################
     ## if jackknife, get number of schools contributing to G estimation (those with nblock > 1),
-    ## and among those schools, assign them which jackknife batch they will be excluded from,
+    ## and among those schools, assign which jackknife batch each will be excluded from,
     ## using approximately the square root of the number of contributing schools as the number
     ## of jackknife batches
     ## ########################################################
     if(control$jackknife){
         Sj <- sum(sapply(dsch, function(x){ x$nblock > 1 }))
-        J  <- floor(sqrt(Sj))
-        .r <- Sj %% J
+
+        ## determine number of batches and number of schools in each batch
+        J  <- ceiling(sqrt(Sj))
+        .n <- rep(J-2,J)
+        if(Sj - sum(.n) >= J){
+            .n <- .n + 1
+        }
+        .r <- Sj - sum(.n)
+        if(.r > 0){
+            .n[1:.r] <- .n[1:.r] + 1
+        }
+        stopifnot(Sj == sum(.n))
+
+        ## randomly assign each school to the batch that will exclude it
+        ## (schools with only one block are nominally assigned batch 0)
+        tmp <- sample(rep(as.integer(1:J),times=.n))
+        .i      <- 0
+        for(s in 1:S){
+            if(dsch[[s]]$nblock == 1){
+                dsch[[s]]$jackex <- 0L
+            } else {
+                .i <- .i + 1
+                dsch[[s]]$jackex <- tmp[.i]
+            }
+        }
+    } else {
+        J <- 0L
     }
-        
-        
-    
-    
     
     ## ########################################################
     ## compute provisional variance/covariance matrix "R_sb" of errors in aggregate
@@ -696,7 +718,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## the WLS estimator for the elements of G.
     ##
     ## NOTE: do this with a loop and accumulate key results so that we don't need
-    ## to store large pieces for each school
+    ## to store large pieces for each school, and can also accumulate pieces
+    ## needed for jackknife
     ## ########################################################
     if(!control$quietly){
         cat("Computing required school-level quantities (may be slow when estimating G)...\n")
@@ -713,12 +736,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## create matrix to implement sum-to-zero constraints
     A  <- sparseMatrix(i=c(1:(B-1), rep(B,B-1)), j=c(1:(B-1),1:(B-1)), x=c(rep(1,B-1),rep(-1,B-1)), dims=c(B,B-1))
 
-    ## create matrix "adj_observed_moments" to hold the sum across schools of each
-    ## school's observed cross-product matrix, adjusted for measurement error. We store
-    ## as a (BxB) symmetric matrix
-    adj_observed_moments <- sparseMatrix(i=1,j=1,x=0, dims=c(B,B), symmetric=TRUE)
-
-    ## create matrix to hold the design matrix for the WLS estimator of G.
+    ## create matrix to hold the sum across schools of each
+    ## school's observed cross-product matrix, adjusted for measurement error.
+    ## We store as a (BxB) symmetric matrix.
+    ##
+    ## Also create matrix to hold the design matrix for the WLS estimator of G.
     ## there are B(B+1)/2 rows, corresponding to the column-major lower triangle
     ## of the observed moments, and there are (B-1)B/2 columns, corresponding to the
     ## column-major lower triangle of G*, the (B-1)x(B-1) full-rank covariance matrix.
@@ -726,7 +748,17 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: sparse tended to be slower here so we make it dense, which is fine
     ## because the matrix actually ends up dense.  Zsum will accumulate across
     ## schools and each school's contribution will be initialized to Zs0.
-    Zsum <- Zs0  <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
+    ##
+    ## NOTE: expanded to list to accommodate jackknife calculations.  the
+    ## first element of the list is for the full data, and the other elements
+    ## are for jackknife samples
+    Zs0  <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
+    .tmp <- sparseMatrix(i=1,j=1,x=0, dims=c(B,B), symmetric=TRUE)        
+    Zsum <- Ysum <- vector(J+1,mode="list")
+    for(j in 1:(J+1)){
+        Ysum[[j]] <- .tmp
+        Zsum[[j]] <- Zs0
+    }
     
     ## create vectors that will be used to mash matrix elements together as needed.
     ## posd is vector of diagonal positions for (B-1)x(B-1) matrix lower triangle.
@@ -741,7 +773,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     posB[lower.tri(posB, diag=TRUE)] <- 1:B2
     
     ## loop over schools
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         x        <- dsch[[s]]
         stopifnot(all(x$oblocks == x$tab$blockid))
         b        <- x$oblocks
@@ -754,17 +786,22 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         x$R_sb   <- as(x$R_sb,   "symmetricMatrix")
         x$pis    <- sparseVector(x$tab$nsb/sum(x$tab$nsb), i = x$tab$blockid, length=B)
 
-        ## compute school contribution to adj_observed_moments, restricting to
-        ## schools with 2+ blocks
+        ## compute school contribution to Ysum, for schools with 2+ blocks
         if(!G_supplied && (x$nblock > 1)){
             Pis <- sparseMatrix(i=1,j=1,x=0, dims=c(B,B))
             for(.b in b){
                 Pis[.b,] <- x$pis
             }
-            Is      <- sparseMatrix(i=b,j=b,x=rep(1,x$nblock), dims=c(B,B), symmetric=TRUE)
-            me_adj  <- (Is - Pis) %*% x$R_sb %*% t(Is - Pis)
-            .y      <- sparseMatrix(i = rep(1,x$nblock), j = b, x = x$tab$Y_sb_tilde - x$mu, dims=c(1,B))
-            adj_observed_moments <- adj_observed_moments + (crossprod(.y) - me_adj)
+            Is        <- sparseMatrix(i=b,j=b,x=rep(1,x$nblock), dims=c(B,B), symmetric=TRUE)
+            me_adj    <- (Is - Pis) %*% x$R_sb %*% t(Is - Pis)
+            .y        <- sparseMatrix(i = rep(1,x$nblock), j = b, x = x$tab$Y_sb_tilde - x$mu, dims=c(1,B))
+            .piece    <- crossprod(.y) - me_adj
+            Ysum[[1]] <- Ysum[[1]] + .piece
+            if(control$jackknife){
+                ## NOTE: need x$jackex + 1 because j=2...J+1 are positions of jackknife sums
+                Ysum[[x$jackex + 1]] <- Ysum[[x$jackex + 1]] + .piece
+            }
+            
             ## NOTE: equivalent calculation:
             ##
             ## .R  <- (Is - Pis) %*% sparseVector(x$tab$Y_sb_tilde, i = b, length=B)
@@ -775,8 +812,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             ## 
             ## v    <- x$tab$nsb/sum(x$tab$nsb)
             ## Pis  <- matrix(v, nrow=x$nblock, ncol=x$nblock, byrow=T)
-            ## S    <- x$R_sb[b,b]
-            ## me_adj1 <- S - (Pis %*% S) - (S %*% t(Pis)) + (Pis %*% S %*% t(Pis))
+            ## .S    <- x$R_sb[b,b]
+            ## me_adj1 <- .S - (Pis %*% .S) - (.S %*% t(Pis)) + (Pis %*% .S %*% t(Pis))
             ## trips <- list()
             ## wh       <- 0
             ## for(j in 1:ncol(me_adj1)){
@@ -827,7 +864,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 }
             }
             Zs[,posd] <- Zs[,posd] / 2.0
-            Zsum      <- Zsum + Zs
+            Zsum[[1]] <- Zsum[[1]] + Zs
+            if(control$jackknife){
+                Zsum[[x$jackex + 1]] <- Zsum[[x$jackex + 1]] + Zs
+            }
             
             ## CHECK: does Zs do what is intended?
             ##
@@ -842,93 +882,115 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dsch[[s]] <- x
     }
     rm(Zs0); gc()
+
+    ## adjust jackknife sums to be the total minus the relevant sum for excluded schools
+    if(control$jackknife){
+        for(j in 2:(J+1)){
+            Ysum[[j]] <- Ysum[[1]] - Ysum[[j]]
+            Zsum[[j]] <- Zsum[[1]] - Zsum[[j]]
+        }
+    }
     
     ## #########################################################
     ## compute WLS estimates of G* elements, force to PSD,
     ## and translate to estimates of G.  Note that fixed zeros
-    ## for G* are introduced depending on G_est
+    ## for G* are introduced depending on G_est.
+    ##
+    ## we do this for the base sample and (if applicable) all jackknife samples,
+    ## storing everything in a list "G" of matrices.
     ## #########################################################
-    if(!G_supplied){
+    if(G_supplied){
+        dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
+        G             <- list(G)
+    } else {
         if(!control$quietly){
             cat("Estimating school*block variance components...\n")
         }
+        G <- vector(J+1, mode="list")
 
-        ## define pieces needed to get WLS estimator, restricting to observations (rows)
-        ## and parameters (columns) depending on G_est
-
-        ## observation (row) restrictions
-        rkeep  <- dblockpairs$G_est
-        .Y     <- as.matrix(adj_observed_moments)
-        .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
-        stopifnot(length(rkeep) == length(.Y))
-        .Y     <- .Y[rkeep]
-        Zsum   <- Zsum[rkeep,]
-
+        ## weight matrix for GLS estimator
         tmp    <- subset(dblockpairs, G_est)
         stopifnot(all(diff(tmp$iB) > 0))
         .W     <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
 
-        ## parameter (column) restrictions
-        tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
-        stopifnot(all(diff(tmp$iBminus1) == 1))
-        ckeep  <- tmp$G_est
-        Zsum   <- Zsum[,ckeep]
+        
+        ## define pieces needed to get WLS estimator, restricting to observations (rows)
+        ## and parameters (columns) depending on G_est
+        for(j in 1:(J+1)){
 
-        ## solve for estimable parameters and construct Gstar
-        tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
-        stopifnot(all(diff(tmp$iBminus1) > 0))        
-        .xpx   <- t(Zsum) %*% .W %*% Zsum
-        .xpy   <- t(Zsum) %*% .W %*% .Y
-        tmp$gstar <- as.vector(solve(.xpx, .xpy))
-        Gstar  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
-        
-        ## create "Graw" which is based on raw Gstar, even if not PSD.
-        ## this is just to save and return
-        Graw             <- as.matrix(A %*% Gstar %*% t(A))
-        dblockpairs$Graw <- Graw[lower.tri(Graw, diag=TRUE)]
-        
-        ## force Gstar to be PSD and create "G" from that, which will be used for
-        ## later calculations.
-        ##
-        ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
-        ## it.  if it does not, we fall back to the spectral decomposition
-        ## adjustment (which generally will not preserve fixed zeros).
-        ##
-        ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
-        ## control$keepDiag_first (default FALSE)
-        e <- eigen(Gstar)
-        if(any(e$values < -sqrt(.Machine$double.eps))){
-            if(!control$quietly){
-                cat("Adjusting G* to make PSD...\n")
+            ## observation (row) restrictions
+            rkeep  <- dblockpairs$G_est
+            .Y     <- as.matrix(Ysum[[j]])
+            .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
+            stopifnot(length(rkeep) == length(.Y))
+            .Y     <- .Y[rkeep]
+            .zsum  <- Zsum[[j]][rkeep,]
+
+            ## parameter (column) restrictions
+            tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
+            stopifnot(all(diff(tmp$iBminus1) == 1))
+            ckeep  <- tmp$G_est
+            .zsum  <- .zsum[,ckeep]
+
+            ## solve for estimable parameters and construct Gstar
+            tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
+            stopifnot(all(diff(tmp$iBminus1) > 0))        
+            .xpx   <- t(.zsum) %*% .W %*% .zsum
+            .xpy   <- t(.zsum) %*% .W %*% .Y
+            tmp$gstar <- as.vector(solve(.xpx, .xpy))
+            Gstar  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
+
+            ## save and return the "raw" G estimates, based on Gstar, even if not PSD
+            ## (do this for full sample only)
+            if(j==1){
+                tmp              <- as.matrix(A %*% Gstar %*% t(A))
+                dblockpairs$Graw <- tmp[lower.tri(tmp, diag=TRUE)]
             }
-            .Gstar <- Gstar
-            tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=control$keepDiag_first)
-            if(tmp$converged){
-                Gstar <- tmp$mat
-            } else {
-                tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=!control$keepDiag_first)
+        
+            ## force Gstar to be PSD and create "G" from that, which will be used for
+            ## later calculations.
+            ##
+            ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
+            ## it.  if it does not, we fall back to the spectral decomposition
+            ## adjustment (which generally will not preserve fixed zeros).
+            ##
+            ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
+            ## control$keepDiag_first (default FALSE)
+            e <- eigen(Gstar)
+            if(any(e$values < -sqrt(.Machine$double.eps))){
+                if(!control$quietly && (j==1)){
+                    cat("Adjusting G* to make PSD...\n")
+                }
+                .Gstar <- Gstar
+                tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=control$keepDiag_first)
                 if(tmp$converged){
                     Gstar <- tmp$mat
                 } else {
-                    e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
-                    Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                    tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=!control$keepDiag_first)
+                    if(tmp$converged){
+                        Gstar <- tmp$mat
+                    } else {
+                        e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
+                        Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                    }
+                }
+                if(!control$quietly  && (j==1)){
+                    cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
+                    cat("Summary of differences between original and adjusted G*:\n")
+                    print(summary(c(as.matrix(Gstar - .Gstar))))
                 }
             }
-            if(!control$quietly){
-                cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
-                cat("Summary of differences between original and adjusted G*:\n")
-                print(summary(c(as.matrix(Gstar - .Gstar))))
+            .G <- A %*% Gstar %*% t(A)
+            .G <- .G[lower.tri(.G, diag=TRUE)]
+            if(j==1){
+                dblockpairs$G <- .G
             }
+            G[[j]] <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=.G, dims=c(B,B), symmetric=TRUE)
+            rownames(G[[j]]) <- colnames(G[[j]]) <- .blocknames
         }
-        G     <- A %*% Gstar %*% t(A)
-        dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
-        G     <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=dblockpairs$G, dims=c(B,B), symmetric=TRUE)
-        rownames(G) <- colnames(G) <- .blocknames
-        rm(.Y,.W,.xpx,.xpy,Gstar,Zsum)
-    } else {
-        dblockpairs$G <- G[lower.tri(G, diag=TRUE)]
+        rm(.Y, .W, .xpx, .xpy, Gstar, .G, .zsum, Zsum, Ysum)
     }
-
+    
     ## ###################################################
     ## now that G estimation is done, go back and force R to be PSD if needed.
     ## NOTE: use nearPD2 function to maintain fixed zeros, and as with
@@ -966,7 +1028,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             dblockpairs$R <- R[lower.tri(R, diag=TRUE)]
 
             ## adjust R_sb elements of dsch as well, since these are used in EBLP
-            for(s in 1:length(dsch)){
+            for(s in 1:S){
                 x$R_sb     <- x$Ntilde * R
                 x$R_sb     <- as(x$R_sb, "symmetricMatrix")
             }
@@ -982,53 +1044,89 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## "X" matrix in standard notation is just a vector of 1.
     ## #############################################
     if(!control$quietly){
-        cat("Computing GLS estimators, raw EBLPs, and MSEs (may be slow)...\n")
+        cat("Computing GLS estimators, raw EBLPs, and MSEs (may be slow, especially with jackknife)...\n")
     }
 
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         x     <- dsch[[s]]
         nb    <- x$nblock
         b     <- x$oblocks
-
+        
+        if(control$jackknife){
+            x$jack_blp <- matrix(nrow=nb, ncol=J)
+            x$jack_mu  <- rep(-99.0, length=J)
+        }
+        
         .Y    <- matrix(x$tab$Y_sb_tilde, ncol=1)
         .X    <- matrix(1, ncol=1, nrow=nb)
-        .G    <- as(G[b,b,drop=FALSE], "symmetricMatrix")
-        .vinv <- solve(.G + x$R_sb[b,b,drop=FALSE])
-        if(max(abs(.vinv- t(.vinv))) > 1e-8){
-            warning("matrix of questionable symmetry arose in computation of V^{-1}")
-        }
-        .vinv <- forceSymmetric(.vinv)
-        .vinv <- as(.vinv, "symmetricMatrix")
 
-        ## GLS estimator of mu, plus EBLP at school*block level
-        .Xp_Vinv    <- crossprod(.X, .vinv)
-        .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
-        x$mu        <- as.vector(solve(.Xp_Vinv_X, (.Xp_Vinv %*% .Y)))
-        x$tab$blp   <- x$tab$alpha_sb + as.vector(x$mu + (.G %*% .vinv %*% (.Y - x$mu)))
+        for(j in 1:(J+1)){
+            .G    <- as(G[[j]][b,b,drop=FALSE], "symmetricMatrix")
+            .vinv <- solve(.G + x$R_sb[b,b,drop=FALSE])
+            if(max(abs(.vinv- t(.vinv))) > 1e-8){
+                warning("matrix of questionable symmetry arose in computation of V^{-1}")
+            }
+            .vinv <- forceSymmetric(.vinv)
+            .vinv <- as(.vinv, "symmetricMatrix")
 
-        ## MSE estimators, treating alpha_sb as known
-        H     <- (matrix(1.0, ncol=nb, nrow=nb) %*% .vinv) / sum(.vinv)
-        ImH   <- diag(nb) - H
-        Q     <- H + ((.G %*% .vinv) %*% ImH) ## NOTE: rowsums==1, useful for weights
-        ImQ   <- diag(nb) - Q
-        x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[b,b,drop=F] %*% t(Q))
+            ## GLS estimator of mu, plus EBLP at school*block level
+            .Xp_Vinv    <- crossprod(.X, .vinv)
+            .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
+            .mu         <- as.vector(solve(.Xp_Vinv_X, (.Xp_Vinv %*% .Y)))
+            .blp        <- x$tab$alpha_sb + as.vector(.mu + (.G %*% .vinv %*% (.Y - .mu)))
+
+            if(j==1){
+                x$mu      <- .mu
+                x$tab$blp <- .blp
+            } else {
+                x$jack_mu[j-1]   <- .mu
+                x$jack_blp[,j-1] <- .blp
+            }
+
+            if(j==1){
+                ## MSE estimators, treating alpha_sb as known, and not accounting for jackknife
+                H     <- (matrix(1.0, ncol=nb, nrow=nb) %*% .vinv) / sum(.vinv)
+                ImH   <- diag(nb) - H
+                Q     <- H + ((.G %*% .vinv) %*% ImH) ## NOTE: rowsums==1, useful for weights
+                ImQ   <- diag(nb) - Q
+                x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[b,b,drop=F] %*% t(Q))
         
-        if(control$mse_blp_chk){
-            ## check MSE using alt formula from Das, Jiang and Rao (2004)
-            g1  <- .G - (.G %*% .vinv %*% .G)
-            tmp <- diag(nb) - (.vinv %*% .G)
-            g2  <- t(tmp) %*% (matrix(1.0, ncol=nb, nrow=nb) / sum(.vinv)) %*% tmp
-            x$mse_blp_chk <- g1 + g2
-            if(max(abs(x$mse_blp - x$mse_blp_chk)) > 1e-10){
-                stop(paste0("mse_blp_chk failed: school ",s))
+                if(control$mse_blp_chk){
+                    ## check MSE using alt formula from Das, Jiang and Rao (2004)
+                    g1  <- .G - (.G %*% .vinv %*% .G)
+                    tmp <- diag(nb) - (.vinv %*% .G)
+                    g2  <- t(tmp) %*% (matrix(1.0, ncol=nb, nrow=nb) / sum(.vinv)) %*% tmp
+                    mse_blp_chk <- g1 + g2
+                    if(max(abs(x$mse_blp - mse_blp_chk)) > 1e-10){
+                        stop(paste0("mse_blp_chk failed: school ",s))
+                    }
+                }
+                
+                x$Q         <- Q
+                
+                ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}, conditional on known V        
+                x$var_muhat <- 1.0/sum(.vinv) 
             }
         }
-        x$Q         <- Q
-        ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}, conditional on known V        
-        x$var_muhat <- 1.0/sum(.vinv) 
+        
+        ## add jackknife variance/MSE pieces
+        ## "plugin" refers to the first-order plug-in estimate, "so" refers to second-order jackknife 
+        if(control$jackknife){
+            ## GLS estimator of school fixed effect
+            x$var_muhat_plugin <- x$var_muhat
+            x$var_muhat_so     <- ((J-1)/J) * sum( (x$jack_mu - x$mu)^2 )
+            x$var_muhat        <- x$var_muhat_plugin + x$var_muhat_so
+
+            ## vector of EBLP of school*block means
+            x$mse_blp_plugin   <- x$mse_blp
+            .tmp <- Reduce("+",lapply(1:J, function(j){ crossprod( matrix(x$jack_blp[,j] - x$tab$blp, nrow=1) )}))
+            x$mse_blp_so       <- ((J-1)/J) * .tmp
+            x$mse_blp          <- x$mse_blp_plugin + x$mse_blp_so
+        }
+
         dsch[[s]]   <- x
     }
-    
+
     ## summaries of EBLPS
     if(!control$quietly){
         .blp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$blp })))
@@ -1057,7 +1155,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!control$quietly){
         cat("Computing composite EBLPs and MSE estimates...\n")
     }
-    for(s in 1:length(dsch)){
+    for(s in 1:S){
         x <- dsch[[s]]
         b <- x$oblocks
         n <- x$tab$nsb
@@ -1106,17 +1204,17 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             mse.direct   <- as.vector(t(lambda) %*% x$R_sb[b,b,drop=F] %*% lambda)
             est.blp      <- sum(lambda * x$tab$blp)
             mse.blp      <- as.vector(t(lambda) %*% x$mse_blp %*% lambda)
-            mse.null     <- as.vector(t(lambda) %*% G[b,b,drop=F] %*% lambda)
-            prmse.null   <- 1 - mse.blp/mse.null
+            ## mse.null     <- as.vector(t(lambda) %*% G[[1]][b,b,drop=F] %*% lambda)
+            ## prmse.null   <- 1 - mse.blp/mse.null
             prmse.direct <- 1 - mse.blp/mse.direct
-            tmp <- list(est=c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, prmse.null = prmse.null, prmse.direct = prmse.direct))
+            tmp <- list(est=c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, prmse.direct = prmse.direct))
             weights[b,"blp"] <- as.vector( t(lambda) %*% x$Q )
             
             ## package up and save
             x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = ntarget, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
             x$weights     <- weights
         } else { ## school has insufficient observed data for direct estimator of target
-            x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = 0, ncontrast = 0, est.direct = NA, mse.direct = NA, est.blp = NA, mse.blp = NA, prmse.null = NA, prmse.direct = NA, stringsAsFactors=FALSE)
+            x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = 0, ncontrast = 0, est.direct = NA, mse.direct = NA, est.blp = NA, mse.blp = NA, prmse.direct = NA, stringsAsFactors=FALSE)
         }
         dsch[[s]]     <- x
     }
@@ -1133,7 +1231,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                bhat_ols               = .bhat,
                modstats               = modstats,
                tab_patterns           = tab_patterns,
-               G                      = G,
+               G                      = G[[1]],
                R                      = R,
                target_blocks          = target_blocks,
                target_contrast_blocks = target_contrast_blocks,
