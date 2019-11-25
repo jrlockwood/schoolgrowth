@@ -77,7 +77,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     if(is.null(control$jackknife)){
-        control$jackknife <- FALSE
+        control$jackknife <- TRUE
     }
     
     R_supplied    <- !is.null(control$R)
