@@ -1125,6 +1125,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
 
         dsch[[s]]   <- x
+
+        if( !control$quietly && ((s %% 100) == 0) ){
+            cat(paste(s,"schools done\n"))
+        }
     }
 
     ## summaries of EBLPS
