@@ -1110,16 +1110,21 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         
         ## add jackknife variance/MSE pieces
-        ## "plugin" refers to the first-order plug-in estimate, "so" refers to second-order jackknife 
+        ## "plugin" refers to the first-order plug-in estimate, "so" refers to second-order jackknife
+        ##
+        ## NOTE: originally we subtracted x$mu and x$tab$blp, but this seemed to result in overcorrection,
+        ## so we changed the code to just compute the sample variance
         if(control$jackknife){
             ## GLS estimator of school fixed effect
             x$var_muhat_plugin <- x$var_muhat
-            x$var_muhat_so     <- ((J-1)/J) * sum( (x$jack_mu - x$mu)^2 )
+            .mean              <- mean(x$jack_mu)
+            x$var_muhat_so     <- ((J-1)/J) * sum( (x$jack_mu - .mean)^2 )
             x$var_muhat        <- x$var_muhat_plugin + x$var_muhat_so
 
             ## vector of EBLP of school*block means
             x$mse_blp_plugin   <- x$mse_blp
-            .tmp <- Reduce("+",lapply(1:J, function(j){ crossprod( matrix(x$jack_blp[,j] - x$tab$blp, nrow=1) )}))
+            .mean              <- as.vector(apply(x$jack_blp, 1, mean))
+            .tmp <- Reduce("+",lapply(1:J, function(j){ crossprod( matrix(x$jack_blp[,j] - .mean, nrow=1) )}))
             x$mse_blp_so       <- ((J-1)/J) * .tmp
             x$mse_blp          <- x$mse_blp_plugin + x$mse_blp_so
         }
