@@ -679,20 +679,35 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## if jackknife, get number of schools contributing to G estimation (those with nblock > 1),
     ## and among those schools, assign which jackknife batch each will be excluded from,
     ## using approximately the square root of the number of contributing schools as the number
-    ## of jackknife batches
+    ## of jackknife batches by default, or working with a user-supplied J if it is supplied
     ## ########################################################
     if(control$jackknife){
         Sj <- sum(sapply(dsch, function(x){ x$nblock > 1 }))
+        .J <- ceiling(sqrt(Sj))
 
-        ## determine number of batches and number of schools in each batch
-        J  <- ceiling(sqrt(Sj))
-        .n <- rep(J-2,J)
-        if(Sj - sum(.n) >= J){
-            .n <- .n + 1
+        ## determine number of batches
+        if(!is.null(control$jackknife_J)){
+            J <- as.integer(control$jackknife_J)
+            if(J < .J){
+                stop("control$jackknife_J is too small; see help file")
+            }
+            if(J > Sj){
+                stop("control$jackknife_J is too large; see help file")
+            }
+        } else {
+            J  <- .J
         }
-        .r <- Sj - sum(.n)
-        if(.r > 0){
-            .n[1:.r] <- .n[1:.r] + 1
+
+        ## determine number of schools excluded from each batch
+        .n <- rep(0, J)
+        .i <- .cumi <- 1L
+        while(.cumi <= Sj){
+            .n[.i] <- .n[.i] + 1L
+            .i     <- .i + 1L
+            if(.i > J){
+                .i <- 1L
+            }
+            .cumi <- .cumi + 1L
         }
         stopifnot(Sj == sum(.n))
 
