@@ -923,16 +923,15 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(!control$quietly){
             cat("Estimating school*block variance components...\n")
         }
-        G <- vector(J+1, mode="list")
+        G <- Gstar <- vector(J+1, mode="list")
 
         ## weight matrix for GLS estimator
         tmp    <- subset(dblockpairs, G_est)
         stopifnot(all(diff(tmp$iB) > 0))
         .W     <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
-
         
         ## define pieces needed to get WLS estimator, restricting to observations (rows)
-        ## and parameters (columns) depending on G_est
+        ## and parameters (columns) depending on G_est, compute Gstar for each jackknife batch
         for(j in 1:(J+1)){
 
             ## observation (row) restrictions
@@ -954,50 +953,47 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stopifnot(all(diff(tmp$iBminus1) > 0))        
             .xpx   <- t(.zsum) %*% .W %*% .zsum
             .xpy   <- t(.zsum) %*% .W %*% .Y
-            tmp$gstar <- as.vector(solve(.xpx, .xpy))
-            Gstar  <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
+            tmp$gstar  <- as.vector(solve(.xpx, .xpy))
+            Gstar[[j]] <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
 
             ## save and return the "raw" G estimates, based on Gstar, even if not PSD
             ## (do this for full sample only)
             if(j==1){
-                tmp              <- as.matrix(A %*% Gstar %*% t(A))
+                tmp              <- as.matrix(A %*% Gstar[[j]] %*% t(A))
                 dblockpairs$Graw <- tmp[lower.tri(tmp, diag=TRUE)]
             }
+        }
+        rm(.Y, .W, .xpx, .xpy, .zsum, Zsum, Ysum)
         
-            ## force Gstar to be PSD and create "G" from that, which will be used for
-            ## later calculations.
-            ##
-            ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
-            ## it.  if it does not, we fall back to the spectral decomposition
-            ## adjustment (which generally will not preserve fixed zeros).
-            ##
-            ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
-            ## control$keepDiag_first (default FALSE)
-            e <- eigen(Gstar)
+        ## now loop over Gstar elements, forcing each to be PSD and create "G" elements
+        ## from that
+        ##
+        ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
+        ## it.  if it does not, we fall back to the spectral decomposition
+        ## adjustment (which generally will not preserve fixed zeros).
+        ##
+        ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
+        ## control$keepDiag_first (default FALSE)
+        for(j in 1:(J+1)){
+            e <- eigen(Gstar[[j]])
             if(any(e$values < -sqrt(.Machine$double.eps))){
                 if(!control$quietly && (j==1)){
                     cat("Adjusting G* to make PSD...\n")
                 }
-                .Gstar <- Gstar
-                tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=control$keepDiag_first)
+                tmp <- nearPD2(Gstar[[j]], fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=control$keepDiag_first)
                 if(tmp$converged){
-                    Gstar <- tmp$mat
+                    Gstar[[j]] <- tmp$mat
                 } else {
-                    tmp <- nearPD2(Gstar, fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=!control$keepDiag_first)
+                    tmp <- nearPD2(Gstar[[j]], fix0s=TRUE, do2eigen=FALSE, eig.tol=control$eig.tol, conv.tol=1e-11, maxit=1000, keepDiag=!control$keepDiag_first)
                     if(tmp$converged){
-                        Gstar <- tmp$mat
+                        Gstar[[j]] <- tmp$mat
                     } else {
                         e$values[which(e$values < max(e$values)*control$eig.tol)] <- 0.0
-                        Gstar <- e$vectors %*% diag(e$values) %*% t(e$vectors)
+                        Gstar[[j]] <- e$vectors %*% diag(e$values) %*% t(e$vectors)
                     }
                 }
-                if(!control$quietly  && (j==1)){
-                    cat(paste0("Smallest eigenvalue of adjusted G*: ",min(eigen(Gstar)$values),"\n"))
-                    cat("Summary of differences between original and adjusted G*:\n")
-                    print(summary(c(as.matrix(Gstar - .Gstar))))
-                }
             }
-            .G <- A %*% Gstar %*% t(A)
+            .G <- A %*% Gstar[[j]] %*% t(A)
             .G <- .G[lower.tri(.G, diag=TRUE)]
             if(j==1){
                 dblockpairs$G <- .G
@@ -1005,7 +1001,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             G[[j]] <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=.G, dims=c(B,B), symmetric=TRUE)
             rownames(G[[j]]) <- colnames(G[[j]]) <- .blocknames
         }
-        rm(.Y, .W, .xpx, .xpy, Gstar, .G, .zsum, Zsum, Ysum)
     }
     
     ## ###################################################
@@ -1130,7 +1125,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## "plugin" refers to the first-order plug-in estimate, "so" refers to second-order jackknife
         ##
         ## NOTE: originally we subtracted x$mu and x$tab$blp, but this seemed to result in overcorrection,
-        ## so we changed the code to just compute the sample variance
+        ## so we changed the code to center with respect to jackknife sample means
         if(control$jackknife){
             ## GLS estimator of school fixed effect
             x$var_muhat_plugin <- x$var_muhat
@@ -1262,8 +1257,15 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                target_blocks          = target_blocks,
                target_contrast_blocks = target_contrast_blocks,
                aggregated_growth      = do.call("rbind",lapply(dsch, function(x){ x$est })))
+    
     if(control$return_d){
         .r$d <- d
     }
+
+    if(control$jackknife){
+        .r$G_jack     <- G[-1]
+        .r$Gstar_jack <- Gstar[-1]
+    }
+    
     return(.r)
 }

@@ -1,5 +1,7 @@
 TODOs:
 
+## shrinkage penalty on Ghat
+
 ## fix global binding warnings in R CMD check
 
 ## allow target to be a list of named vectors so that we get BLPs for a vector
