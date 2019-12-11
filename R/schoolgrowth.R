@@ -79,6 +79,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$jackknife)){
         control$jackknife <- TRUE
     }
+
+    if(is.null(control$regularize_Ghat)){
+        control$regularize_Ghat <- control$jackknife
+    }
     
     R_supplied    <- !is.null(control$R)
     G_supplied    <- !is.null(control$G)
@@ -87,6 +91,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## be used when G is supplied
     if(G_supplied && control$jackknife){
         stop("jackknife applies only when G is estimated")
+    }
+
+    ## likewise for regularize_Ghat
+    if(G_supplied && control$regularize_Ghat){
+        stop("regularize_Ghat applies only when G is estimated")
     }
     
     ## stop if there are any schools with fewer than control$school_nmin records
@@ -327,7 +336,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## need them in the correct positions
     ##
     ## NOTE: elements of dblockpairs ordered to fill the lower triangle
-    ## of a BxB symmetric matrix using column-major order
+    ## of a BxB symmetric matrix in column-major order, which is why
+    ## the outer loop is over columns and inner loop over rows
     ## #################################################################
     dblockpairs <- data.frame(iB = 1:B2, blockidi = 0L, blockidj = 0L)
     wh <- 0
@@ -352,7 +362,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## defined by sum-to-zero constraints. This is needed to implement
     ## fixing certain elements of G* to 0 based on G_est (defined later)
     ## ###################################################################
-    dblockpairs$iBminus1 <- 0L
+    dblockpairs$iBminus1        <- 0L
     is.na(dblockpairs$iBminus1) <- TRUE
     wh <- 0
     for(j in 1:(B-1)){
@@ -397,15 +407,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## stop if any block has too few schools
     if(!G_supplied){
-        tmp <- subset(dblockpairs, blockidi == blockidj)
-        if(!all(tmp$G_est)){
+        if(!all(subset(dblockpairs, blockidi == blockidj)$G_est)){
             stop("At least one block has fewer than control$blockpair_school_nmin schools")
         }
     }
     
     ## #####################################################################
     ## compute "N" for each school which is a sparse symmetric matrix that gives
-    ## the number of students in each block pair.  I.e., diagonals are the
+    ## the number of students in each block pair.  The diagonals are the
     ## number of students in a given school contributing to the growth measure
     ## for each block, and off-diagonals are the number of students in a given
     ## school contributing to the growth measures in a pair of blocks
@@ -900,7 +909,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     rm(Zs0); gc()
 
-    ## adjust jackknife sums to be the total minus the relevant sum for excluded schools
+    ## adjust jackknife sums to be the total minus the relevant sum for excluded schools,
+    ## so that the result equals the appropriate sum for the schools that are included
+    ## in each jackknife batch
     if(control$jackknife){
         for(j in 2:(J+1)){
             Ysum[[j]] <- Ysum[[1]] - Ysum[[j]]
@@ -923,50 +934,66 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(!control$quietly){
             cat("Estimating school*block variance components...\n")
         }
-        G <- Gstar <- vector(J+1, mode="list")
+        G <- Gstar <- vGstar <- vector(J+1, mode="list")
 
-        ## weight matrix for GLS estimator
-        tmp    <- subset(dblockpairs, G_est)
+        ## compute pieces that do not depend on individual jackknife batch
+        ##
+        ## 1) diagonal weight matrix .W for GLS estimation
+        tmp     <- subset(dblockpairs, G_est)
         stopifnot(all(diff(tmp$iB) > 0))
-        .W     <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
-        
-        ## define pieces needed to get WLS estimator, restricting to observations (rows)
-        ## and parameters (columns) depending on G_est, compute Gstar for each jackknife batch
-        for(j in 1:(J+1)){
+        .W      <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
+        ## 2) vectors for row (observed moment) and column (parameter) restrictions to account for G_est
+        .rkeep   <- dblockpairs$G_est
+        tmp     <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
+        stopifnot(all(!is.na(tmp$iBminus1)) && all(diff(tmp$iBminus1) == 1))
+        .ckeep   <- tmp$G_est
+        ## 3) the block pair information corresponding to estimated parameters
+        .bpairs <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
+        stopifnot(all(!is.na(.bpairs$iBminus1)) && all(diff(.bpairs$iBminus1) > 0))
 
-            ## observation (row) restrictions
-            rkeep  <- dblockpairs$G_est
+        ## #########################################################
+        ## compute Gstar for full sample and each jackknife sample
+        ## #########################################################        
+        for(j in 1:(J+1)){
+            ## apply observation (row) and parameter (column) restrictions
             .Y     <- as.matrix(Ysum[[j]])
             .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
-            stopifnot(length(rkeep) == length(.Y))
-            .Y     <- .Y[rkeep]
-            .zsum  <- Zsum[[j]][rkeep,]
-
-            ## parameter (column) restrictions
-            tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
-            stopifnot(all(diff(tmp$iBminus1) == 1))
-            ckeep  <- tmp$G_est
-            .zsum  <- .zsum[,ckeep]
+            stopifnot(length(.rkeep) == length(.Y))
+            .Y     <- .Y[.rkeep]
+            .zsum  <- Zsum[[j]][.rkeep,.ckeep,drop=F]
 
             ## solve for estimable parameters and construct Gstar
-            tmp    <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
-            stopifnot(all(diff(tmp$iBminus1) > 0))        
-            .xpx   <- t(.zsum) %*% .W %*% .zsum
-            .xpy   <- t(.zsum) %*% .W %*% .Y
-            tmp$gstar  <- as.vector(solve(.xpx, .xpy))
-            Gstar[[j]] <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$gstar, dims=c(B-1,B-1), symmetric=TRUE)
+            .xpx        <- t(.zsum) %*% .W %*% .zsum
+            .xpy        <- t(.zsum) %*% .W %*% .Y
+            vGstar[[j]] <- as.vector(solve(.xpx, .xpy))
+            Gstar[[j]]  <- sparseMatrix(i=.bpairs$blockidi, j=.bpairs$blockidj, x=vGstar[[j]], dims=c(B-1,B-1), symmetric=TRUE)
 
-            ## save and return the "raw" G estimates, based on Gstar, even if not PSD
-            ## (do this for full sample only)
+            ## save and return the "raw" G estimates, based on Gstar for the full sample.
             if(j==1){
                 tmp              <- as.matrix(A %*% Gstar[[j]] %*% t(A))
                 dblockpairs$Graw <- tmp[lower.tri(tmp, diag=TRUE)]
             }
         }
         rm(.Y, .W, .xpx, .xpy, .zsum, Zsum, Ysum)
+
+
+
+
+        ## FLAG LEFT OFF DO REGULARIZE
+
+
+
+
         
-        ## now loop over Gstar elements, forcing each to be PSD and create "G" elements
-        ## from that
+
+
+
+
+
+
+        ## ############################################################################
+        ## now loop over Gstar elements, forcing each to be PSD.
+        ## then create G elements from that
         ##
         ## NOTE: sometimes nearPD2() does not converge.  if it does, we use
         ## it.  if it does not, we fall back to the spectral decomposition
@@ -974,6 +1001,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ##
         ## NOTE: whether we start with keepDiag=TRUE or FALSE depends on
         ## control$keepDiag_first (default FALSE)
+        ## ############################################################################        
         for(j in 1:(J+1)){
             e <- eigen(Gstar[[j]])
             if(any(e$values < -sqrt(.Machine$double.eps))){
