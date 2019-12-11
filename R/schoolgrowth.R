@@ -561,7 +561,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$R_nstu <- 0L
 
         if(!control$quietly){
-            cat("Estimating residual variances...\n")
+            cat("Estimating R (variances)...\n")
         }
         .ss  <- tapply(d$e^2, d$blockid, sum)
         .n   <- tapply(rep(1,nrow(d)), d$blockid, sum)
@@ -573,7 +573,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         dblockpairs$R[wh]      <- as.vector(.ss / .rdf)
 
         if(!control$quietly){
-            cat("Estimating residual covariances...\n")
+            cat("Estimating R (covariances)...\n")
         }
         for(wh in subset(dblockpairs, (blockidi != blockidj) & R_est)$iB){
             bi <- dblockpairs$blockidi[wh]
@@ -932,7 +932,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         G             <- list(G)
     } else {
         if(!control$quietly){
-            cat("Estimating school*block variance components...\n")
+            cat("Estimating G...\n")
         }
         G <- Gstar <- vGstar <- vector(J+1, mode="list")
 
@@ -975,22 +975,61 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
         }
         rm(.Y, .W, .xpx, .xpy, .zsum, Zsum, Ysum)
-
-
-
-
-        ## FLAG LEFT OFF DO REGULARIZE
-
-
-
-
         
+        ## ##########################################################
+        ## regularize estimated variances and covariances in Gstar using linear shrinkage
+        ##
+        ## NOTE: in initial explorations we found a correlation between estimated covariance
+        ## and school sample size for a block pair, which is due to K-8 schools.  This led
+        ## to problems when shrinking covariances to a grand mean.  So we instead shrink
+        ## covariances to a regression based on number of contributing schools.
+        ## ##########################################################
+        if(control$regularize_Ghat){
+            if(!control$quietly){
+                cat("Regularizing G* estimates...\n")
+            }
 
+            ## create vectors of indices for variances and covariances
+            i_v <- which(.bpairs$blockidj == .bpairs$blockidi)
+            i_c <- which(.bpairs$blockidj  < .bpairs$blockidi)
+            stopifnot(all(diff(i_v) > 0) && all(diff(i_c) > 0) && all(sort(c(i_v, i_c)) == 1:nrow(.bpairs)))
 
+            ## get estimated regression of covariances on number of contributing schools
+            .nsch <- .bpairs$nsch
+            .m    <- lm(vGstar[[1]][i_c] ~ .nsch[i_c])
+            .b    <- coef(.m)
+            
+            ## use jackknife samples to get estimated error variances for each estimated VC
+            vjack <- apply(do.call("cbind", vGstar[-1]), 1, function(x){ ((J-1)/J) * sum((x - mean(x))^2)})
+            
+            ## get estimated first and second moments of variances, and covariances, using MOM.
+            ## NOTE: for covariances, we use the estimated residual variance from the regression
+            mu_v   <- mean(vGstar[[1]][i_v])
+            tsq_v  <- max( c(var(vGstar[[1]][i_v]) - mean(vjack[i_v]), 0.0) )
 
+            mu_c   <- mean(vGstar[[1]][i_c])
+            tsq_c  <- max( c(summary(.m)$sigma^2 - mean(vjack[i_c]), 0.0) )
 
+            ## shrink all variances and covariances
+            vGstar_raw <- vGstar
+            for(w in 1:length(vjack)){
+                mu  <- ifelse(w %in% i_v, mu_v,  (.b[1] + .b[2]*.nsch[w]) )
+                tsq <- ifelse(w %in% i_v, tsq_v, tsq_c)
+                lam <- tsq / (tsq + vjack[w])
+                for(j in 1:(J+1)){
+                    vGstar[[j]][w] <- mu + lam*(vGstar[[j]][w] - mu)
+                }
+            }
 
+            ## replace Gstar matrices
+            for(j in 1:(J+1)){
+                Gstar[[j]]  <- sparseMatrix(i=.bpairs$blockidi, j=.bpairs$blockidj, x=vGstar[[j]], dims=c(B-1,B-1), symmetric=TRUE)
+            }
 
+            ## store list of information related to regularization
+            regularize_Ghat_info <- list(vGstar_raw = vGstar_raw, vGstar_reg = vGstar, vjack = vjack, mu_v = mu_v, tsq_v = tsq_v, mu_c = mu_c, tsq_c = tsq_c, model = .m)
+        }
+        
         ## ############################################################################
         ## now loop over Gstar elements, forcing each to be PSD.
         ## then create G elements from that
@@ -1293,6 +1332,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(control$jackknife){
         .r$G_jack     <- G[-1]
         .r$Gstar_jack <- Gstar[-1]
+    }
+
+    if(control$regularize_Ghat){
+        .r$regularize_Ghat_info <- regularize_Ghat_info
     }
     
     return(.r)
