@@ -1027,7 +1027,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
 
             ## store list of information related to regularization
-            regularize_Ghat_info <- list(vGstar_raw = vGstar_raw, vGstar_reg = vGstar, vjack = vjack, mu_v = mu_v, tsq_v = tsq_v, mu_c = mu_c, tsq_c = tsq_c, model = .m)
+            ##
+            ## NOTE: turned this off because it was eating massive storage during simulation
+            ## regularize_Ghat_info <- list(vGstar_raw = vGstar_raw, vGstar_reg = vGstar, vjack = vjack, mu_v = mu_v, tsq_v = tsq_v, mu_c = mu_c, tsq_c = tsq_c)
         }
         
         ## ############################################################################
@@ -1334,9 +1336,5 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         .r$Gstar_jack <- Gstar[-1]
     }
 
-    if(control$regularize_Ghat){
-        .r$regularize_Ghat_info <- regularize_Ghat_info
-    }
-    
     return(.r)
 }
