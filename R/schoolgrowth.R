@@ -81,7 +81,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     if(is.null(control$regularize_Ghat)){
-        control$regularize_Ghat <- control$jackknife
+        control$regularize_Ghat <- FALSE
     }
     
     R_supplied    <- !is.null(control$R)
@@ -97,6 +97,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(G_supplied && control$regularize_Ghat){
         stop("regularize_Ghat applies only when G is estimated")
     }
+
+    ## and regularize_Ghat requires jackknife
+    if(!control$jackknife && control$regularize_Ghat){
+        stop("regularize_Ghat requires control$jackknife=TRUE")
+    }
+    
     
     ## stop if there are any schools with fewer than control$school_nmin records
     if(any(as.vector(table(d$school)) < control$school_nmin)){
@@ -986,7 +992,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## ##########################################################
         if(control$regularize_Ghat){
             if(!control$quietly){
-                cat("Regularizing G* estimates...\n")
+                cat("Regularizing G* estimates (NOTE: EXPERIMENTAL!)...\n")
             }
 
             ## create vectors of indices for variances and covariances
@@ -1025,11 +1031,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             for(j in 1:(J+1)){
                 Gstar[[j]]  <- sparseMatrix(i=.bpairs$blockidi, j=.bpairs$blockidj, x=vGstar[[j]], dims=c(B-1,B-1), symmetric=TRUE)
             }
-
-            ## store list of information related to regularization
-            ##
-            ## NOTE: turned this off because it was eating massive storage during simulation
-            ## regularize_Ghat_info <- list(vGstar_raw = vGstar_raw, vGstar_reg = vGstar, vjack = vjack, mu_v = mu_v, tsq_v = tsq_v, mu_c = mu_c, tsq_c = tsq_c)
         }
         
         ## ############################################################################
@@ -1069,6 +1070,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             }
             G[[j]] <- sparseMatrix(i=dblockpairs$blockidi, j=dblockpairs$blockidj, x=.G, dims=c(B,B), symmetric=TRUE)
             rownames(G[[j]]) <- colnames(G[[j]]) <- .blocknames
+        }
+
+        ## ############################################################################        
+        ## if control$jackknife, use jackknife samples to estimate variance of G
+        ## ############################################################################
+        if(control$jackknife){
+            .m <- as.matrix(Reduce("+",G[-1]) / J)
+            varhat_G <- ((J-1)/J) * Reduce("+", lapply(G[-1], function(x){ (as.matrix(x) - .m)^2 }))
         }
     }
     
@@ -1334,6 +1343,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(control$jackknife){
         .r$G_jack     <- G[-1]
         .r$Gstar_jack <- Gstar[-1]
+        .r$varhat_G   <- varhat_G
     }
 
     return(.r)
