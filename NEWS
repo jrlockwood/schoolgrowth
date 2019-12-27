@@ -1,6 +1,12 @@
-TODOs:
+###################
+## TODOs
+###################
 
-## shrinkage penalty on Ghat
+
+
+
+## (possible): use delete-1 jackknife to estimate variance of estimated variance
+   (and percentage of marginal variance) due to school fixed effects
 
 ## fix global binding warnings in R CMD check
 
@@ -13,12 +19,12 @@ TODOs:
    at the OLS stage, so that the variance due to this term can be incorporated
    into the MSE estimator for the BLP
 
-## allow user-supplied number of jackknife replications
 
 
 
-
+###################
 ## HELP FILE NOTES
+###################
 
 ## note that code forces the end-user to think about and confront
    strata directly, rather than having an automatic solution implemented that

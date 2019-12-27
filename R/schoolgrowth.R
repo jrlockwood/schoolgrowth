@@ -1303,17 +1303,17 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             mse.direct   <- as.vector(t(lambda) %*% x$R_sb[b,b,drop=F] %*% lambda)
             est.blp      <- sum(lambda * x$tab$blp)
             mse.blp      <- as.vector(t(lambda) %*% x$mse_blp %*% lambda)
-            ## mse.null     <- as.vector(t(lambda) %*% G[[1]][b,b,drop=F] %*% lambda)
-            ## prmse.null   <- 1 - mse.blp/mse.null
+            est.hybrid   <- ifelse(mse.blp < mse.direct, est.blp, est.direct)
+            mse.hybrid   <- ifelse(mse.blp < mse.direct, mse.blp, mse.direct)
             prmse.direct <- 1 - mse.blp/mse.direct
-            tmp <- list(est=c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, prmse.direct = prmse.direct))
+            tmp <- list(est=c(est.direct = est.direct, mse.direct = mse.direct, est.blp = est.blp, mse.blp = mse.blp, est.hybrid = est.hybrid, mse.hybrid = mse.hybrid, prmse.direct = prmse.direct))
             weights[b,"blp"] <- as.vector( t(lambda) %*% x$Q )
             
             ## package up and save
             x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = ntarget, ncontrast = ncontrast, as.data.frame(as.list(tmp$est)), stringsAsFactors=FALSE)
             x$weights     <- weights
         } else { ## school has insufficient observed data for direct estimator of target
-            x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = 0, ncontrast = 0, est.direct = NA, mse.direct = NA, est.blp = NA, mse.blp = NA, prmse.direct = NA, stringsAsFactors=FALSE)
+            x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = 0, ncontrast = 0, est.direct = NA, mse.direct = NA, est.blp = NA, mse.blp = NA, est.hybrid = NA, mse.hybrid = NA, prmse.direct = NA, stringsAsFactors=FALSE)
         }
         dsch[[s]]     <- x
     }
