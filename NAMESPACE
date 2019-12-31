@@ -1,6 +1,6 @@
 export(schoolgrowth)
 
-importFrom("stats", "ave", "cov", "na.omit", "reshape", "var", "weighted.mean")
+importFrom("stats", "ave", "coef", "cor", "cov", "lm", "na.omit", "reshape", "var", "weighted.mean")
 
 importFrom("methods", "as", "is", "new")
 

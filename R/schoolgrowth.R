@@ -379,7 +379,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
     }
     dblockpairs <- dblockpairs[,c("blocki","blockj","blockidi","blockidj","iB","iBminus1")]
-    stopifnot(all(is.na(subset(dblockpairs, (blockidi == B) | (blockidj == B))$iBminus1)))
+    .locs <- which( (dblockpairs$blockidi == B) | (dblockpairs$blockidj == B) )
+    stopifnot(all(is.na(dblockpairs$iBminus1[.locs])))
     stopifnot(all(na.omit(dblockpairs$iBminus1) == 1:(B*(B-1)/2)))
     
     ## ##################################################################
@@ -413,7 +414,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## stop if any block has too few schools
     if(!G_supplied){
-        if(!all(subset(dblockpairs, blockidi == blockidj)$G_est)){
+        .locs <- which( dblockpairs$blockidi == dblockpairs$blockidj )
+        if(!all(dblockpairs$G_est[.locs])){
             stop("At least one block has fewer than control$blockpair_school_nmin schools")
         }
     }
@@ -446,7 +448,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 trips[[wh]] <- c(i = oblocks[i], j = oblocks[j], n = as.integer(sum(.tab[,i]*.tab[,j])))
             }
         }
-        trips <- subset(as.data.frame(do.call("rbind", trips)), n > 0)
+        trips <- as.data.frame(do.call("rbind", trips))
+        trips <- trips[which(trips$n > 0),]
         dsch[[s]]$N <- sparseMatrix(i=trips$i, j=trips$j, x=trips$n, dims=c(B,B), symmetric=TRUE)
     }
     stopifnot(sum(sapply(dsch, function(x){ sum(diag(x$N))})) == nrow(d))
@@ -475,8 +478,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     ## stop if any block has too few students
     if(!R_supplied){
-        tmp <- subset(dblockpairs, blockidi == blockidj)
-        if(!all(tmp$R_est)){
+        .locs <- which( dblockpairs$blockidi == dblockpairs$blockidj )        
+        if(!all(dblockpairs$R_est[.locs])){
             stop("At least one block has fewer than control$blockpair_student_nmin students")
         }
     }
@@ -581,19 +584,23 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(!control$quietly){
             cat("Estimating R (covariances)...\n")
         }
-        for(wh in subset(dblockpairs, (blockidi != blockidj) & R_est)$iB){
-            bi <- dblockpairs$blockidi[wh]
-            bj <- dblockpairs$blockidj[wh]
-            tmp <- subset(d, blockid %in% c(bi, bj), select = c("stuid","school","blockid","sbp","nsbp","e"))
+
+        .locs <- which( (dblockpairs$blockidi != dblockpairs$blockidj) & (dblockpairs$R_est) )
+        for(wh in dblockpairs$iB[.locs]){
+            bi  <- dblockpairs$blockidi[wh]
+            bj  <- dblockpairs$blockidj[wh]
+            tmp <- d[which(d$blockid %in% c(bi, bj)), c("stuid","school","blockid","sbp","nsbp","e")]
             tmp$blockid[which(tmp$blockid==bi)] <- 0
             tmp$blockid[which(tmp$blockid==bj)] <- 1
-            
-            tmp <- subset(tmp, stuid %in% unique(tmp$stuid[duplicated(tmp$stuid)]))
+
+            .dups <- unique(tmp$stuid[duplicated(tmp$stuid)])
+            tmp   <- tmp[which(tmp$stuid %in% .dups),]
+
             if(nrow(tmp) > 0){
                 stopifnot(all(as.data.frame(table(tmp$stuid))$Freq == 2))
                 tmp <- reshape(tmp, timevar="blockid", idvar="stuid", direction="wide")
                 ## restrict to sbp with at least two observations
-                tmp <- subset(tmp, (nsbp.0 >= 2) & (nsbp.1 >= 2))
+                tmp <- tmp[which( (tmp$nsbp.0 >= 2) & (tmp$nsbp.1 >= 2) ),]
                 if(nrow(tmp) > 0){
                     dblockpairs$R_nstu[wh] <- nrow(tmp)
                     
@@ -760,7 +767,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## create R
     ## NOTE: this is provisional, used for moment estimation, and may not be PSD.
     if(!R_supplied){
-        tmp <- subset(dblockpairs, R_est)
+        tmp <- dblockpairs[which(dblockpairs$R_est),]
         R   <- sparseMatrix(i=tmp$blockidi, j=tmp$blockidj, x=tmp$R, dims=c(B,B), symmetric=TRUE)
         rownames(R) <- colnames(R) <- .blocknames
     }
@@ -945,16 +952,16 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## compute pieces that do not depend on individual jackknife batch
         ##
         ## 1) diagonal weight matrix .W for GLS estimation
-        tmp     <- subset(dblockpairs, G_est)
+        tmp <- dblockpairs[which(dblockpairs$G_est),]
         stopifnot(all(diff(tmp$iB) > 0))
-        .W      <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
+        .W  <- sparseMatrix(i=1:nrow(tmp), j=1:nrow(tmp), x=tmp$nsch, dims=c(nrow(tmp),nrow(tmp)), symmetric=TRUE)
         ## 2) vectors for row (observed moment) and column (parameter) restrictions to account for G_est
-        .rkeep   <- dblockpairs$G_est
-        tmp     <- subset(dblockpairs, (blockidi < B) & (blockidj < B) )
+        .rkeep  <- dblockpairs$G_est
+        tmp     <- dblockpairs[ which( (dblockpairs$blockidi < B) & (dblockpairs$blockidj < B) ), ]
         stopifnot(all(!is.na(tmp$iBminus1)) && all(diff(tmp$iBminus1) == 1))
-        .ckeep   <- tmp$G_est
+        .ckeep  <- tmp$G_est
         ## 3) the block pair information corresponding to estimated parameters
-        .bpairs <- subset(dblockpairs, (blockidi < B) & (blockidj < B) & G_est)
+        .bpairs <- dblockpairs[ which( (dblockpairs$blockidi < B) & (dblockpairs$blockidj < B) & (dblockpairs$G_est) ), ]
         stopifnot(all(!is.na(.bpairs$iBminus1)) && all(diff(.bpairs$iBminus1) > 0))
 
         ## #########################################################

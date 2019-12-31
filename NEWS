@@ -2,14 +2,6 @@
 ## TODOs
 ###################
 
-
-
-
-## (possible): use delete-1 jackknife to estimate variance of estimated variance
-   (and percentage of marginal variance) due to school fixed effects
-
-## fix global binding warnings in R CMD check
-
 ## allow target to be a list of named vectors so that we get BLPs for a vector
    of outcomes simultaneously (e.g. Dan's idea of requesting the raw block-level
    BLPs for each school) - we should also make sure this information is included
@@ -18,9 +10,6 @@
 ## add cluster-robust SEs (at school level) for the block-by-pattern FE computed
    at the OLS stage, so that the variance due to this term can be incorporated
    into the MSE estimator for the BLP
-
-
-
 
 ###################
 ## HELP FILE NOTES
