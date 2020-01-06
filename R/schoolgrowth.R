@@ -76,7 +76,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         control$mse_blp_chk <- FALSE
     }
 
-    if(is.null(control$jackknife)){
+    if(is.null(control[["jackknife"]])){
         control$jackknife <- TRUE
     }
 
