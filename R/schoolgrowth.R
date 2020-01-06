@@ -708,12 +708,19 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
         ## determine number of batches
         if(!is.null(control$jackknife_J)){
-            J <- as.integer(control$jackknife_J)
-            if(J < 2){
-                stop("control$jackknife_J is too small")
-            }
-            if(J > Sj){
-                stop("control$jackknife_J is too large")
+            if(control$jackknife_J == "max"){
+                J <- Sj
+            } else {
+                J <- as.integer(control$jackknife_J)
+                if(is.na(J)){
+                    stop("invalid specification of control$jackknife_J")
+                }
+                if(J < 2){
+                    stop("control$jackknife_J is too small")
+                }
+                if(J > Sj){
+                    stop("control$jackknife_J is too large")
+                }
             }
             if(J > 100){
                 warning("control$jackknife_J is large, which may result in excessive RAM usage")
