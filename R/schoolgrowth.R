@@ -519,6 +519,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         cat(paste("Number of patterns after collapsing (control$pattern_nmin=",control$pattern_nmin,"): ", length(unique(tmp$cpattern)),"\n",sep=""))
     }
     tab_patterns <- tmp
+    rownames(tab_patterns) <- 1:nrow(tab_patterns)
     
     ## assign the collapsed patterns to "collapsed"
     if(any(tmp$cpattern=="collapsed")){
