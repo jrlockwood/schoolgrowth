@@ -629,7 +629,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!control$quietly){
         cat("Computing OLS estimates of regression coefficients...\n")
     }
-    modstats   <- c(ntot = nrow(d), nstu = length(unique(d$stuid)), nsch = length(unique(d$school)), varY = var(d$Y))
+    modstats   <- list(ntot = nrow(d), nstu = length(unique(d$stuid)), nsch = length(unique(d$school)), varY = var(d$Y))
     d$schoolid <- factor(d$school)
     d$bpid     <- factor(d$bpid)
     
@@ -637,7 +637,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## have as much as possible
     d$tmp   <- ave(d$Y, d$school)
     .e      <- sum( (d$Y - d$tmp)^2 ) / (nrow(d) - length(unique(d$school)))
-    modstats["Rsq_sfe"] <- 1.0 - (.e / modstats["varY"])
+    modstats[["Rsq_sfe"]] <- 1.0 - (.e / modstats[["varY"]])
     d$tmp   <- NULL
     
     ## now fit the actual model with school FE and block/pattern FE
@@ -670,8 +670,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     rm(.X,.xpx,.xpy,tmp); gc()
-    modstats["varE"]     <- .sse / (nrow(d) - .mdf)
-    modstats["Rsq_tot"]  <- 1.0 - (modstats["varE"]/modstats["varY"])
+    modstats[["mdf"]]      <- .mdf
+    modstats[["varE"]]     <- .sse / (nrow(d) - .mdf)
+    modstats[["Rsq_tot"]]  <- 1.0 - (modstats[["varE"]]/modstats[["varY"]])
         
     ## ############################################################
     ## calculate and check various school*block aggregates, which will be used
@@ -695,13 +696,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     stopifnot(all(unlist(lapply(dsch, function(x){ diag(x$N)[x$tab$blockid] - x$tab$nsb })) == 0))
-    stopifnot(max(abs(sapply(dsch, function(x){ x$mu - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats["varY"]*1e-10)
+    stopifnot(max(abs(sapply(dsch, function(x){ x$mu - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats[["varY"]]*1e-10)
 
     ## ########################################################
     ## if jackknife, get number of schools contributing to G estimation (those with nblock > 1),
-    ## and among those schools, assign which jackknife batch each will be excluded from,
-    ## using 50 batches by default (lambda = 2% of contributing schools deleted per batch),
-    ## or working with a user-supplied J if it is supplied
+    ## and among those schools, assign which jackknife batch each will be excluded from.
+    ## default number of batches is min(#contributing schools, 50), or use user-supplied J
     ## #########################################################
     if(control$jackknife){
         Sj <- sum(sapply(dsch, function(x){ x$nblock > 1 }))
@@ -726,7 +726,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 warning("control$jackknife_J is large, which may result in excessive RAM usage")
             }
         } else {
-            J  <- 50
+            J  <- min(50, Sj)
         }
 
         ## determine number of schools excluded from each batch
@@ -1259,8 +1259,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     .l    <- .l/sum(.l)
     .y    <- sapply(dsch, function(x){ x$mu })
     .s    <- sapply(dsch, function(x){ x$var_muhat })
-    modstats["estimated_variance_among_schools"] <- (sum(.l * .y^2) - sum(.l * .s)) - ( (sum(.l * .y))^2 - sum(.l^2 * .s) )
-    modstats["estimated_percvar_among_schools"]  <- modstats["estimated_variance_among_schools"] / modstats["varY"]
+    modstats[["estimated_variance_among_schools"]] <- (sum(.l * .y^2) - sum(.l * .s)) - ( (sum(.l * .y))^2 - sum(.l^2 * .s) )
+    modstats[["estimated_percvar_among_schools"]]  <- modstats[["estimated_variance_among_schools"]] / modstats[["varY"]]
     
     ## #############################################
     ## EBLP and MSE calculation for target
