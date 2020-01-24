@@ -275,14 +275,11 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(sum(dblock$intarget) < 1){
         stop("'target' implies no contributing blocks")
     }
-    target_blocks   <- dblock$block[dblock$intarget]
     target_blockids <- dblock$blockid[dblock$intarget]
     
     ## ########################################################
     ## parse "target_contrast"
     ## ########################################################    
-    target_contrast_blocks <- NULL
-    
     if(!is.null(target_contrast)){
         
         if(!is.character(target_contrast) || is.null(names(target_contrast)) || (length(target_contrast) != 4)){
@@ -331,7 +328,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(sum(dblock$intarget_contrast) < 1){
             stop("'target_contrast' implies no contributing blocks")
         }
-        target_contrast_blocks   <- dblock$block[dblock$intarget_contrast]
         target_contrast_blockids <- dblock$blockid[dblock$intarget_contrast]
     }
     
@@ -633,15 +629,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     modstats   <- list(ntot = nrow(d), nstu = length(unique(d$stuid)), nsch = length(unique(d$school)), varY = var(d$Y))
     d$schoolid <- factor(d$school)
     d$bpid     <- factor(d$bpid)
-    
-    ## first fit school FE only, no blocks, for R^2 calculation letting schools
-    ## have as much as possible
-    d$tmp   <- ave(d$Y, d$school)
-    .e      <- sum( (d$Y - d$tmp)^2 ) / (nrow(d) - length(unique(d$school)))
-    modstats[["Rsq_sfe"]] <- 1.0 - (.e / modstats[["varY"]])
-    d$tmp   <- NULL
-    
-    ## now fit the actual model with school FE and block/pattern FE
+        
+    ## fit model with school FE and block/pattern FE
     .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
     .X      <- sparse.model.matrix(~schoolid - 1 + bpid, data=d, contrasts.arg=list(schoolid="contr.treatment",bpid="contr.sum"))
     stopifnot(all(.X@x %in% c(-1,0,1)) && (ncol(.X) == .mdf))
@@ -671,9 +660,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     rm(.X,.xpx,.xpy,tmp); gc()
-    modstats[["mdf"]]      <- .mdf
-    modstats[["varE"]]     <- .sse / (nrow(d) - .mdf)
-    modstats[["Rsq_tot"]]  <- 1.0 - (modstats[["varE"]]/modstats[["varY"]])
         
     ## ############################################################
     ## calculate and check various school*block aggregates, which will be used
@@ -1334,8 +1320,13 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     ## ####################
-    ## RETURN
+    ## RETURN (after some clean-up)
     ## ####################
+    dblockpairs$iB      <- NULL
+    dblockpairs$iBminus <- NULL
+    .agg <- do.call("rbind",lapply(dsch, function(x){ x$est }))
+    rownames(.agg) <- 1:nrow(.agg)
+    
     .r <- list(control                = control,
                target                 = target,
                target_contrast        = target_contrast,
@@ -1347,9 +1338,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                tab_patterns           = tab_patterns,
                G                      = G[[1]],
                R                      = R,
-               target_blocks          = target_blocks,
-               target_contrast_blocks = target_contrast_blocks,
-               aggregated_growth      = do.call("rbind",lapply(dsch, function(x){ x$est })))
+               aggregated_growth      = .agg)
     
     if(control$return_d){
         .r$d <- d

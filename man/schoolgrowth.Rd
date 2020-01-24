@@ -64,6 +64,40 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 
 \examples{
 data(growthscores)
+print(head(growthscores))
+print(c(nrec = nrow(growthscores), nstudent = length(unique(growthscores$stuid)), nschool = length(unique(growthscores$school))))
+
+## data have B=6 blocks:
+print(unique(growthscores[,c("year","grade","subject")]))
+
+## fit model
+##
+## NOTE: jackknife step skipped with 'jackknife=FALSE' control option
+## only to minimize computation time for the example
+m <- schoolgrowth(growthscores, target = c(years="final", subjects="math", grades="all", weights="n"), control=list(quietly=TRUE, mse_blp_chk=FALSE, jackknife=FALSE))
+print(names(m))
+
+## summary information for blocks and block pairs
+print(m$dblock)
+print(nrow(m$dblockpairs)) ## B*(B+1)/2
+print(head(m$dblockpairs))
+
+## summary information for each school
+print(length(m$dsch))
+print(names(m$dsch[[1]]))
+
+## miscellaneous meta-data
+print(m$modstats)
+
+## summary of student patterns
+print(m$tab_patterns)
+
+## estimated variance components
+print(m$G)
+print(m$R)
+
+## direct, EBLP and hybrid estimates of target for each school
+print(m$aggregated_growth)
 }
 
 \keyword{models}
