@@ -13,27 +13,48 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 }
 
 \arguments{
-  \item{d}{
+  \item{d}{    
     A dataframe consisting of student-level growth scores.  Each record
     of \code{d} provides the growth score for a given student from a
-    given \dQuote{block}, where a block is defined as the combination of
-    a given year, a given grade-level, and a given subject.  The fields
-    of \code{d} must consist of at least the following: \code{stuid},
-    \code{school}, \code{grade}, \code{year}, \code{subject} and
-    \code{Y}.  None of these fields can have missing values.  The field
-    \code{stuid} is a student identifier that links growth scores from
-    the same student in different blocks.  The field \code{school} is a
-    school identifier that, for each record, indicates which school is
-    associated with the growth score for the given student and block.
-    The fields \code{grade}, \code{year}, and \code{subject} are the
-    grade-level, year and subject associated with the given growth
-    score.  The field \code{Y} is the growth score, which must be
-    numeric.  The field \code{year} must be either numeric, or in a
-    format that can be coerced to numeric.
+    given 'block', where a block is defined as the combination of a
+    given year, a given grade-level, and a given subject. The dataframe
+    \code{d} must have at least the following named fields:
+    \code{stuid}, \code{school}, \code{grade}, \code{year},
+    \code{subject}, and \code{Y}.  None of these fields can have missing
+    values.  The field \code{stuid} is a student identifier that links
+    growth scores from the same student in different blocks.  The field
+    \code{school} is a school identifier that, for each record,
+    indicates which school is associated with the growth score for the
+    given student and block.  The fields \code{grade}, \code{year}, and
+    \code{subject} are the grade-level, year and subject associated with
+    the given growth score.  The field \code{Y} is the growth score,
+    which must be numeric.  The field \code{year} must be either
+    numeric, or in a format that can be coerced to numeric.
   }
 
   \item{target}{
-    TODO
+    A named character vector of length at most 4 that is
+    used to define the target estimand for each school. The function
+    computes the direct estimate and EBLP of this target for each school
+    (see Details), provided that the school has at least some data in
+    the required blocks.
+    
+    The names of \code{target} must be among the following: 'years',
+    'subjects', 'grades', and 'weights'.  If elements corresponding to
+    any of these names are missing, they are set to the following
+    defaults: The 'years' element is set to 'final', the 'subjects'
+    element is set to 'all', the 'grades' element is set to 'all', and
+    the weights element is set to 'n'.  Thus if \code{target} is left
+    NULL by the user, the default target estimand for each school will
+    be the average growth in the final year of the modeled data, across
+    all grades and subjects, where each grade and subject will be
+    weighted in proportion to the number of students with growth scores
+    in this grade and subject for each school during the final year of data.
+
+    TODO FLAG LEFT OFF HERE
+    
+    
+    See the Examples section for examples of specifying \code{target}.
   }
 
   \item{target_contrast}{

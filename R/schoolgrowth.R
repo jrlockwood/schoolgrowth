@@ -224,7 +224,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     if(target["years"] == "final"){
         w1 <- (dblock$year == .finalyear)
-    } else {
+    } else if(target["years"] == "all"){
+        w1 <- rep(TRUE, B)
+    } else{
         .years <- gsub(" ","", unlist(strsplit(target["years"],",")))
         if(any(is.na(.years)) || !all(.years %in% dblock$year)){
             stop("'target' specifies years that do not occur in data")
@@ -238,7 +240,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     if(target["subjects"] == "all"){
-        w2 <- rep(TRUE, nrow(dblock))
+        w2 <- rep(TRUE, B)
     } else {
         .subjects <- gsub(" ","", unlist(strsplit(target["subjects"],",")))
         if(any(is.na(.subjects)) || !all(.subjects %in% dblock$subject)){
@@ -253,7 +255,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     if(target["grades"] == "all"){
-        w3 <- rep(TRUE, nrow(dblock))
+        w3 <- rep(TRUE, B)
     } else {
         .grades <- gsub(" ","", unlist(strsplit(target["grades"],",")))
         if(any(is.na(.grades)) || !all(.grades %in% dblock$grade)){
@@ -291,15 +293,21 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         
         ## years:
-        .years <- gsub(" ","", unlist(strsplit(target_contrast["years"],",")))
-        if(any(is.na(.years)) || !all(.years %in% dblock$year)){
-            stop("'target_contrast' specifies years that do not occur in data")
+        if(target_contrast["years"] == "final"){
+            w1 <- (dblock$year == .finalyear)
+        } else if(target_contrast["years"] == "all"){
+            w1 <- rep(TRUE, B)
+        } else{
+            .years <- gsub(" ","", unlist(strsplit(target_contrast["years"],",")))
+            if(any(is.na(.years)) || !all(.years %in% dblock$year)){
+                stop("'target_contrast' specifies years that do not occur in data")
+            }
+            w1 <- dblock$year %in% .years
         }
-        w1 <- dblock$year %in% .years
         
         ## subjects:
         if(target_contrast["subjects"] == "all"){
-            w2 <- rep(TRUE, nrow(dblock))
+            w2 <- rep(TRUE, B)
         } else {
             .subjects <- gsub(" ","", unlist(strsplit(target_contrast["subjects"],",")))
             if(any(is.na(.subjects)) || !all(.subjects %in% dblock$subject)){
@@ -310,7 +318,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         
         ## grades:
         if(target_contrast["grades"] == "all"){
-            w3 <- rep(TRUE, nrow(dblock))
+            w3 <- rep(TRUE, B)
         } else {
             .grades <- gsub(" ","", unlist(strsplit(target_contrast["grades"],",")))
             if(any(is.na(.grades)) || !all(.grades %in% dblock$grade)){
@@ -506,9 +514,6 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 .n <- .n + tmp$pcount[nextsmallest]
                 .w  <- c(nextsmallest,.w)
             }
-            tmp$pcount[.w] <- .n
-        } else {
-            tmp$pcount <- tmp$pcount[1]  ## dumb placeholder
         }
     }
     if(!control$quietly){

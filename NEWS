@@ -2,10 +2,6 @@
 ## TODOs
 ###################
 
-fix pcount in tab_patterns
-
-allow target to have 'all' for years
-
 allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
 
 generalize the syntax of target to allow importance weights on blocks, like you might need if defining a multi-year target
