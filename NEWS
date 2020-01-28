@@ -2,24 +2,12 @@
 ## TODOs
 ###################
 
-## allow target to be a list of named vectors so that we get BLPs for a vector
-   of outcomes simultaneously (e.g. Dan's idea of requesting the raw block-level
-   BLPs for each school) - we should also make sure this information is included
-   on dsch
+fix pcount in tab_patterns
 
-## add cluster-robust SEs (at school level) for the block-by-pattern FE computed
-   at the OLS stage, so that the variance due to this term can be incorporated
-   into the MSE estimator for the BLP
+allow target to have 'all' for years
 
-###################
-## HELP FILE NOTES
-###################
+allow target to be a list of named vectors so that we get BLPs for a vector of outcomes simultaneously
 
-## note that code forces the end-user to think about and confront
-   strata directly, rather than having an automatic solution implemented that
-   might not do what someone wants.  the code will not run without
-   connectedness.
+generalize the syntax of target to allow importance weights on blocks, like you might need if defining a multi-year target
 
-## note that jackknife relies on random partitioning of schools into batches,
-   and for replicability, user will have to set.seed() outside the function
-   
+create S3 class and associated summary and plot methods
