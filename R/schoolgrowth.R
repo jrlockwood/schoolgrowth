@@ -83,6 +83,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$regularize_Ghat)){
         control$regularize_Ghat <- FALSE
     }
+
+    if(is.null(control$return_schjack)){
+        control$return_schjack <- TRUE
+    }
     
     R_supplied    <- !is.null(control$R)
     G_supplied    <- !is.null(control$G)
@@ -1138,6 +1142,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## NOTE: "Z" matrix in standard notation is I here because Y is
     ## directly additive in the school*block random effects, and
     ## "X" matrix in standard notation is just a vector of 1.
+    ##
+    ## NOTE: (4/28/2020) reduce cost of Matrix overhead using
+    ## ".Gm" and ".Rm" to try to speed up calculations with large S*J
     ## #############################################
     if(!control$quietly){
         cat("Computing GLS estimators, raw EBLPs, and MSEs (may be slow, especially with jackknife)...\n")
@@ -1154,38 +1161,40 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         }
         
         .Y    <- matrix(x$tab$Y_sb_tilde, ncol=1)
-        .X    <- matrix(1, ncol=1, nrow=nb)
+        ## .X    <- matrix(1, ncol=1, nrow=nb)
+        .R    <- x$R_sb[b,b,drop=FALSE]
+        .Rm   <- as.matrix(.R)
 
         for(j in 1:(J+1)){
-            .G    <- as(G[[j]][b,b,drop=FALSE], "symmetricMatrix")
-            .vinv <- solve(.G + x$R_sb[b,b,drop=FALSE])
-            if(max(abs(.vinv- t(.vinv))) > 1e-8){
-                warning("matrix of questionable symmetry arose in computation of V^{-1}")
-            }
-            .vinv <- forceSymmetric(.vinv)
-            .vinv <- as(.vinv, "symmetricMatrix")
-
-            ## GLS estimator of mu, plus EBLP at school*block level
-            .Xp_Vinv    <- crossprod(.X, .vinv)
-            .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
-            .mu         <- as.vector(solve(.Xp_Vinv_X, (.Xp_Vinv %*% .Y)))
-            .blp        <- x$tab$alpha_sb + as.vector(.mu + (.G %*% .vinv %*% (.Y - .mu)))
+            ## GLS estimator of mu, plus EBLP at school*block level, for this "j"
+            
+            ## .G    <- as(G[[j]][b,b,drop=FALSE], "symmetricMatrix")
+            ## .vinv <- solve(.G + .R)
+            ## if(max(abs(.vinv- t(.vinv))) > 1e-8){
+            ##    warning("matrix of questionable symmetry arose in computation of V^{-1}")
+            ## }
+            ## .vinv <- forceSymmetric(.vinv)
+            ## .vinv <- as(.vinv, "symmetricMatrix")
+            ## .Xp_Vinv    <- crossprod(.X, .vinv)
+            ## .Xp_Vinv_X  <- as(.Xp_Vinv %*% .X, "symmetricMatrix")
+            ## .mu         <- as.vector(solve(.Xp_Vinv_X, (.Xp_Vinv %*% .Y)))
+            ## .blp        <- x$tab$alpha_sb + as.vector(.mu + (.G %*% .vinv %*% (.Y - .mu)))
+            .Gm   <- as.matrix(G[[j]][b,b,drop=FALSE])
+            .vinv <- solve(.Gm + .Rm)
+            .mu   <- sum(as.vector(.vinv %*% .Y)) / sum(.vinv)
+            .blp  <- x$tab$alpha_sb + as.vector(.mu + (.Gm %*% .vinv %*% (.Y - .mu)))
 
             if(j==1){
                 x$mu      <- .mu
                 x$tab$blp <- .blp
-            } else {
-                x$jack_mu[j-1]   <- .mu
-                x$jack_blp[,j-1] <- .blp
-            }
-
-            if(j==1){
+                
                 ## MSE estimators, treating alpha_sb as known, and not accounting for jackknife
+                .G    <- as(G[[j]][b,b,drop=FALSE], "symmetricMatrix")
                 H     <- (matrix(1.0, ncol=nb, nrow=nb) %*% .vinv) / sum(.vinv)
                 ImH   <- diag(nb) - H
                 Q     <- H + ((.G %*% .vinv) %*% ImH) ## NOTE: rowsums==1, useful for weights
                 ImQ   <- diag(nb) - Q
-                x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% x$R_sb[b,b,drop=F] %*% t(Q))
+                x$mse_blp <- (ImQ %*% .G %*% t(ImQ)) + (Q %*% .R %*% t(Q))
         
                 if(control$mse_blp_chk){
                     ## check MSE using alt formula from Das, Jiang and Rao (2004)
@@ -1201,7 +1210,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 x$Q         <- Q
                 
                 ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}, conditional on known V        
-                x$var_muhat <- 1.0/sum(.vinv) 
+                x$var_muhat <- 1.0/sum(.vinv)
+            } else {
+                x$jack_mu[j-1]   <- .mu
+                x$jack_blp[,j-1] <- .blp
             }
         }
         
@@ -1331,6 +1343,14 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     dblockpairs$iBminus <- NULL
     .agg <- do.call("rbind",lapply(dsch, function(x){ x$est }))
     rownames(.agg) <- 1:nrow(.agg)
+
+    if(control$jackknife && !control$return_schjack){
+        dsch <- lapply(dsch, function(x){
+            x$jack_mu  <- NULL
+            x$jack_blp <- NULL
+            x
+        })
+    }
     
     .r <- list(control                = control,
                target                 = target,

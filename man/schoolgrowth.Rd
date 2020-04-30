@@ -179,6 +179,13 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	\code{schoolgrowth} function.  Default is FALSE.
       }
 
+      \item{return_schjack: }{
+	Logical.  If TRUE, and if jackknifing is used, returns
+	extra jackknife information for each school.  This can result
+	in large objects if the number of schools and jackknife batches
+	are both large.  Default is TRUE.
+      }
+      
       \item{mse_blp_chk: }{
 	Logical.  If TRUE, conducts an auxiliary calculation to
 	double-check the estimated mean squared error (MSE) of the
