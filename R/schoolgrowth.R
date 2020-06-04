@@ -692,7 +692,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     stopifnot(all(unlist(lapply(dsch, function(x){ diag(x$N)[x$tab$blockid] - x$tab$nsb })) == 0))
-    stopifnot(max(abs(sapply(dsch, function(x){ x$mu - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats[["varY"]]*1e-10)
+    stopifnot(max(abs(sapply(dsch, function(x){ x$mu - weighted.mean(x$tab$Y_sb_tilde, w = x$tab$nsb) }))) < modstats[["varY"]]*1e-8)
 
     ## ########################################################
     ## if jackknife, get number of schools contributing to G estimation (those with nblock > 1),
@@ -1202,7 +1202,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                     tmp <- diag(nb) - (.vinv %*% .G)
                     g2  <- t(tmp) %*% (matrix(1.0, ncol=nb, nrow=nb) / sum(.vinv)) %*% tmp
                     mse_blp_chk <- g1 + g2
-                    if(max(abs(x$mse_blp - mse_blp_chk)) > 1e-10){
+                    if(max(abs(x$mse_blp - mse_blp_chk)) > (modstats[["varY"]]*(1e-8))){
+                        if(!control$quietly){
+                            print(max(abs(x$mse_blp - mse_blp_chk)))
+                        }
                         stop(paste0("mse_blp_chk failed: school ",s))
                     }
                 }
