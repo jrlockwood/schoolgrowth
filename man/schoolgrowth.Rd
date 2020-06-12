@@ -129,7 +129,12 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	pattern for the pattern-mixture specification of the model (see
 	Details).  Patterns with fewer than pattern_nmin students will
 	be collapsed with other patterns and modeled with a shared set
-	of mean parameters. Default is 100.
+	of mean parameters. Default is 100.  If \code{pattern_nmin} is
+	the character string \code{"min"}, the function will
+	find the smallest value that does not result in
+	collinearity between the block-by-pattern dummy variables and
+	the school dummy variables, and collapse any patterns with
+	counts fewer than this value.
       }
       
       \item{blockpair_student_nmin: }{

@@ -469,6 +469,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## patterns and then combine small patterns until all patterns have
     ## at least control$pattern_nmin students.
     ##
+    ## NOTE: if control$pattern_nmin="min", it will find and use the smallest
+    ## possible value of control$pattern_nmin such that there is no
+    ## stratification.
+    ##
     ## Also add field to "dblockpairs" that indicates the total number
     ## of students that are common to a given pair of blocks, and then define
     ## R_est as indicator of whether there are a sufficient number of
@@ -491,7 +495,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             stop("At least one block has fewer than control$blockpair_student_nmin students")
         }
     }
-    
+
+    ## reformat stupat
     stupat           <- data.frame(stuid = rownames(stupat), pattern = apply(as.matrix(stupat), 1, paste, collapse=""), stringsAsFactors=FALSE)
     stupat$stuid     <- as.character(stupat$stuid)
     stupat$pcount    <- ave(rep(1,nrow(stupat)), stupat$pattern, FUN=sum)
@@ -499,7 +504,56 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         cat(paste("Number of patterns before collapsing:",length(unique(stupat$pattern)),"\n"))
     }
     
-    ## apply collapsing rule:
+    ## find the minimum pattern count such that maintaining all patterns
+    ## with at least that count ensures no stratification of
+    ## schools * (block*pattern indicators)
+    .uc       <- as.integer(c(sort(unique(stupat$pcount)), nrow(d)+1))
+    .pos      <- 0L
+    connected <- FALSE
+    while(!connected){
+        .pos             <- .pos + 1L
+        stupat$cpattern  <- stupat$pattern
+        stupat$cpattern[which(stupat$pcount < .uc[.pos])] <- "collapsed"
+        stupat$patternid <- as.integer(as.factor(stupat$cpattern))
+        d$patternid      <- stupat$patternid[match(d$stuid, stupat$stuid)]    
+
+        d$schoolid <- as.integer(as.factor(d$school))
+        d$bpid     <- as.integer(as.factor(paste(d$blockid, d$patternid)))
+    
+        grp1.set <- d$schoolid[1]
+        grp2.set <- unique(d$bpid[d$schoolid %in% grp1.set ])
+        l.old    <- c(length(grp1.set), length(grp2.set))
+    
+        grp1.set <- unique(d$schoolid[ d$bpid %in% grp2.set ])
+        grp2.set <- unique(d$bpid[ d$schoolid %in% grp1.set ])
+        
+        while( max( c(length(grp1.set), length(grp2.set)) - l.old ) > 0 ){
+            l.old    <- c(length(grp1.set), length(grp2.set))
+            grp1.set <- unique(d$schoolid[ d$bpid %in% grp2.set ])
+            grp2.set <- unique(d$bpid[ d$schoolid %in% grp1.set ])
+        }
+        connected <- (length(unique(d$schoolid)) == length(grp1.set)) && (length(unique(d$bpid)) == length(grp2.set))
+    }
+    smallest_pattern_nmin <- .uc[.pos]
+    if(!control$quietly){
+        cat(paste("Minimum pattern count required for no stratification:",smallest_pattern_nmin,"\n"))
+    }
+    d$bpid <- NULL
+    stupat <- stupat[,c("stuid","pattern","pcount")]
+    
+    ## create pattern groupings depending on control$pattern_nmin, using collapsing if needed
+    if(control$pattern_nmin=="min"){
+        control$pattern_nmin <- smallest_pattern_nmin
+        if(!control$quietly){
+            cat(paste("Setting control$pattern_nmin to",smallest_pattern_nmin,"\n"))
+        }
+    }
+
+    if(control$pattern_nmin < smallest_pattern_nmin){
+        stop(paste("control$pattern_nmin is too small; data indicate it must be at least",smallest_pattern_nmin))
+    }
+
+    ## apply collapsing rule if needed:
     ## 1) collapse all patterns with counts less than control$pattern_nmin into one pattern
     ## 2) if this combined pattern has count still below threshold, keep pulling in the
     ##    least-populated patterns until it crosses
@@ -532,37 +586,12 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         stupat$pattern[which(stupat$pattern %in% .cpats)] <- "collapsed"
     }
     
-    ## create pattern ID and merge onto d
+    ## create pattern ID and merge onto d; create "bpid" = block*pattern indicator
     stupat$patternid <- as.integer(as.factor(stupat$pattern))
     stopifnot(length(unique(stupat$patternid)) == length(unique(tmp$cpattern)))
     d$patternid <- stupat$patternid[match(d$stuid, stupat$stuid)]
     rm(stupat); gc()
-    
-    ## #############################################################
-    ## checking for stratification of schools * (block*pattern indicators)
-    ## #############################################################
-    if(!control$quietly){
-        cat("Checking for stratification...\n")
-    }
-    d$schoolid <- as.integer(as.factor(d$school))
-    d$bpid     <- as.integer(as.factor(paste(d$blockid, d$patternid)))
-    
-    grp1.set <- d$schoolid[1]
-    grp2.set <- unique(d$bpid[d$schoolid %in% grp1.set ])
-    l.old    <- c(length(grp1.set), length(grp2.set))
-    
-    grp1.set <- unique(d$schoolid[ d$bpid %in% grp2.set ])
-    grp2.set <- unique(d$bpid[ d$schoolid %in% grp1.set ])
-    
-    while( max( c(length(grp1.set), length(grp2.set)) - l.old ) > 0 ){
-        l.old <- c(length(grp1.set), length(grp2.set))
-        grp1.set <- unique(d$schoolid[ d$bpid %in% grp2.set ])
-        grp2.set <- unique(d$bpid[ d$schoolid %in% grp1.set ])
-    }
-    connected <- (length(unique(d$schoolid)) == length(grp1.set)) && (length(unique(d$bpid)) == length(grp2.set))
-    if(!connected){
-        stop("schools and (block*pattern groups) are not connected; see help file for more information")
-    }
+    d$bpid      <- as.integer(as.factor(paste(d$blockid, d$patternid)))
     
     ## #######################################################
     ## Estimate R using within-school, within-block, within-pattern deviations
