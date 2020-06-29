@@ -1158,8 +1158,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
             ## adjust R_sb elements of dsch as well, since these are used in EBLP
             for(s in 1:S){
+                x          <- dsch[[s]]
                 x$R_sb     <- x$Ntilde * R
                 x$R_sb     <- as(x$R_sb, "symmetricMatrix")
+                dsch[[s]]  <- x
             }
         }
     }
@@ -1365,7 +1367,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         } else { ## school has insufficient observed data for direct estimator of target
             x$est         <- data.frame(school = x$school, gconfig = gconfig, ntotal = sum(n), ntarget = 0, ncontrast = 0, est.direct = NA, mse.direct = NA, est.blp = NA, mse.blp = NA, est.hybrid = NA, mse.hybrid = NA, prmse.direct = NA, stringsAsFactors=FALSE)
         }
-        dsch[[s]]     <- x
+        dsch[[s]] <- x
     }
     
     ## ####################

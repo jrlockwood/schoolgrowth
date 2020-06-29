@@ -337,6 +337,11 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
   step converges, the a PSD approximation is constructed using a
   spectral decomposition and setting all eigenvalues that are less than
   (\code{control$eig.tol} times the maximum eigenvalue) to zero.
+
+  The function can be used to compute direct estimates, EBLPs, and
+  associated MSE estimates for grouping variables other than schools
+  (e.g., school districts) simply by passing that grouping variable as
+  the \code{school} element of \code{d}.
 }
 
 \value{
