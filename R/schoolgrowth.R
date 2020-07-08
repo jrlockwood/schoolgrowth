@@ -106,8 +106,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!control$jackknife && control$regularize_Ghat){
         stop("regularize_Ghat requires control$jackknife=TRUE")
     }
-    
-    
+        
     ## stop if there are any schools with fewer than control$school_nmin records
     if(any(as.vector(table(d$school)) < control$school_nmin)){
         stop("there are schools with fewer than control$school_nmin records")
@@ -459,6 +458,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         trips <- as.data.frame(do.call("rbind", trips))
         trips <- trips[which(trips$n > 0),]
         dsch[[s]]$N <- sparseMatrix(i=trips$i, j=trips$j, x=trips$n, dims=c(B,B), symmetric=TRUE)
+        stopifnot(max(abs(as.matrix(dsch[[s]]$N[oblocks,oblocks]) - crossprod(.tab))) < 1e-10)
     }
     stopifnot(sum(sapply(dsch, function(x){ sum(diag(x$N))})) == nrow(d))
     rm(.tab,tmp); gc()
@@ -479,7 +479,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## students in that block pair to estimate the corresponding error covariance.
     ## ##################################################################
     stupat            <- table(d$stuid, d$blockid)
-    stopifnot( (all(colnames(stupat) == as.character(1:B))) && (nrow(stupat) == length(unique(d$stuid))) )    
+    stopifnot( (all(colnames(stupat) == as.character(1:B))) && (nrow(stupat) == length(unique(d$stuid))) )
     dblockpairs$nstu  <- 0L
     dblockpairs$R_est <- TRUE
     
@@ -582,8 +582,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     
     ## assign the collapsed patterns to "collapsed"
     if(any(tmp$cpattern=="collapsed")){
-        .cpats <- tmp$pattern[which(tmp$cpattern=="collapsed")]
-        stupat$pattern[which(stupat$pattern %in% .cpats)] <- "collapsed"
+        .w <- which(tmp$cpattern=="collapsed")
+        stupat$pattern[which(stupat$pattern %in% tmp$pattern[.w])] <- "collapsed"
+        stopifnot(sum(stupat$pattern=="collapsed") == sum(tmp$pcount[.w]))
     }
     
     ## create pattern ID and merge onto d; create "bpid" = block*pattern indicator
@@ -824,7 +825,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## first element of the list is for the full data, and the other elements
     ## are for jackknife samples
     Zs0  <- matrix(0.0, nrow=B*(B+1)/2, ncol=(B-1)*B/2)
-    .tmp <- sparseMatrix(i=1,j=1,x=0, dims=c(B,B), symmetric=TRUE)        
+    .tmp <- sparseMatrix(i=1,j=1,x=0, dims=c(B,B), symmetric=TRUE)
     Zsum <- Ysum <- vector(J+1,mode="list")
     for(j in 1:(J+1)){
         Ysum[[j]] <- .tmp
