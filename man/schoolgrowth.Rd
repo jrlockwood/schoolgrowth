@@ -188,7 +188,8 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	Logical.  If TRUE, and if jackknifing is used, returns
 	extra jackknife information for each school.  This can result
 	in large objects if the number of schools and jackknife batches
-	are both large.  Default is TRUE.
+	are both large.  Setting to FALSE will provide only summary
+	statistics across jackknife batches. Default is TRUE.
       }
       
       \item{mse_blp_chk: }{

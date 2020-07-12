@@ -1188,8 +1188,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         b     <- x$oblocks
         
         if(control$jackknife){
-            x$jack_blp <- matrix(nrow=nb, ncol=J)
-            x$jack_mu  <- rep(-99.0, length=J)
+            x$jack_blp  <- matrix(nrow=nb, ncol=J)
+            x$jack_mu   <- rep(-99.0, length=J)
+            x$jack_vinv <- matrix(nrow=3, ncol=J)
+            rownames(x$jack_vinv) <- c("smallest","largest","trace")
         }
         
         .Y    <- matrix(x$tab$Y_sb_tilde, ncol=1)
@@ -1247,8 +1249,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 ## variance of GLS estimator of school FE = (1'V^{-1}1)^{-1}, conditional on known V        
                 x$var_muhat <- 1.0/sum(.vinv)
             } else {
-                x$jack_mu[j-1]   <- .mu
-                x$jack_blp[,j-1] <- .blp
+                x$jack_mu[j-1]    <- .mu
+                x$jack_blp[,j-1]  <- .blp
+                x$jack_vinv[,j-1] <- c(min(.vinv), max(.vinv), sum(diag(.vinv)))
             }
         }
         
@@ -1381,8 +1384,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     if(control$jackknife && !control$return_schjack){
         dsch <- lapply(dsch, function(x){
-            x$jack_mu  <- NULL
-            x$jack_blp <- NULL
+            x$jack_mu   <- summary(x$jack_mu)
+            x$jack_blp  <- t(apply(x$jack_blp, 1, summary))
+            x$jack_vinv <- t(apply(x$jack_vinv, 1, summary))
             x
         })
     }
