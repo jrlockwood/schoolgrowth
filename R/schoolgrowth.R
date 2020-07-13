@@ -1286,8 +1286,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(!control$quietly){
         .blp <- as.vector(unlist(lapply(dsch, function(x){ x$tab$blp })))
         tmp  <- as.vector(unlist(lapply(dsch, function(x){ x$tab$Y_sb })))
-        cat(paste("(MM) range of raw EBLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
-        cat(paste("(MM) cor(Y,raw EBLPs)  :",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
+        cat(paste("range of block-level EBLPs:",round(min(.blp),digits=4),",",round(max(.blp),digits=4),"\n"))
+        cat(paste("cor(Y,EBLP) at block level:",round(as.vector(cor(.blp, tmp)),digits=4),"\n"))
     }
     
     #####################################################################################
