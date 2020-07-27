@@ -51,6 +51,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(is.null(control$pattern_nmin)){
         control$pattern_nmin <- 100
     }
+
+    if(is.null(control$alpha_zero)){
+        control$alpha_zero <- FALSE
+    }
     
     if(is.null(control$blockpair_student_nmin)){
         control$blockpair_student_nmin <- 100
@@ -668,37 +672,46 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     modstats   <- list(ntot = nrow(d), nstu = length(unique(d$stuid)), nsch = length(unique(d$school)), varY = var(d$Y))
     d$schoolid <- factor(d$school)
     d$bpid     <- factor(d$bpid)
-        
-    ## fit model with school FE and block/pattern FE
-    .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
-    .X      <- sparse.model.matrix(~schoolid - 1 + bpid, data=d, contrasts.arg=list(schoolid="contr.treatment",bpid="contr.sum"))
-    stopifnot(all(.X@x %in% c(-1,0,1)) && (ncol(.X) == .mdf))
-    stopifnot(length(grep("schoolid",colnames(.X))) == length(unique(d$school)))
-    stopifnot(length(grep("bpid",    colnames(.X))) == length(unique(d$bpid))-1)
-    .xpx    <- crossprod(.X)
-    .xpy    <- crossprod(.X, d$Y)
-    .bhat   <- solve(.xpx, .xpy)
-    tmp     <- as.vector(.X %*% .bhat)
-    stopifnot(max(abs(tapply(tmp, d$school, mean) - tapply(d$Y, d$school, mean))) < 1e-6)
-    stopifnot(max(abs(tapply(tmp, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
-    .sse    <- sum( (d$Y - tmp)^2 )
-    
-    ## add estimated means based on block/pattern FE (but not including the school fixed effects),
-    ## which are treated as fixed and known for the remainder of the estimation steps
-    wh           <- grep("bpid", colnames(.X))
-    d$alpha      <- as.vector(.X[,wh] %*% .bhat[wh])
-    .bhat        <- as.vector(.bhat)
-    names(.bhat) <- colnames(.X)
-        
-    ## put estimated school FE on dsch (provisional for now; replaced with GLS estimator later)
-    tmp    <- d[!duplicated(d$school),c("school","schoolid")]
-    tmp$mu <- .bhat[paste0("schoolid",tmp$schoolid)]
-    stopifnot( !any(is.na(tmp$mu)) )
-    for(s in 1:S){
-        dsch[[s]]$mu <- tmp$mu[which(tmp$school == dsch[[s]]$school)]
-    }
 
-    rm(.X,.xpx,.xpy,tmp); gc()
+    if(!control$alpha_zero){
+        ## fit model with school FE and block/pattern FE
+        .mdf    <- length(unique(d$schoolid)) + length(unique(d$bpid)) - 1
+        .X      <- sparse.model.matrix(~schoolid - 1 + bpid, data=d, contrasts.arg=list(schoolid="contr.treatment",bpid="contr.sum"))
+        stopifnot(all(.X@x %in% c(-1,0,1)) && (ncol(.X) == .mdf))
+        stopifnot(length(grep("schoolid",colnames(.X))) == length(unique(d$school)))
+        stopifnot(length(grep("bpid",    colnames(.X))) == length(unique(d$bpid))-1)
+        .xpx    <- crossprod(.X)
+        .xpy    <- crossprod(.X, d$Y)
+        .bhat   <- solve(.xpx, .xpy)
+        tmp     <- as.vector(.X %*% .bhat)
+        stopifnot(max(abs(tapply(tmp, d$school, mean) - tapply(d$Y, d$school, mean))) < 1e-6)
+        stopifnot(max(abs(tapply(tmp, d$bpid,   mean) - tapply(d$Y, d$bpid,   mean))) < 1e-6)
+        ## .sse    <- sum( (d$Y - tmp)^2 )
+        
+        ## add estimated means based on block/pattern FE (but not including the school fixed effects),
+        ## which are treated as fixed and known for the remainder of the estimation steps
+        wh           <- grep("bpid", colnames(.X))
+        d$alpha      <- as.vector(.X[,wh] %*% .bhat[wh])
+        .bhat        <- as.vector(.bhat)
+        names(.bhat) <- colnames(.X)
+    
+        ## put estimated school FE on dsch (provisional for now; replaced with GLS estimator later)
+        tmp    <- d[!duplicated(d$school),c("school","schoolid")]
+        tmp$mu <- .bhat[paste0("schoolid",tmp$schoolid)]
+        stopifnot( !any(is.na(tmp$mu)) )
+        for(s in 1:S){
+            dsch[[s]]$mu <- tmp$mu[which(tmp$school == dsch[[s]]$school)]
+        }
+
+        rm(.X,.xpx,.xpy,tmp); gc()
+    } else {
+        .bhat   <- NULL
+        d$alpha <- 0.0
+        ## when alpha==0, the provisional estimator of mu is just sample mean of Y by school
+        for(s in 1:S){
+            dsch[[s]]$mu <- mean(d$Y[which(d$school == dsch[[s]]$school)])
+        }
+    }
         
     ## ############################################################
     ## calculate and check various school*block aggregates, which will be used
@@ -1168,7 +1181,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     
     ## #############################################
-    ## get GLS estimator of school FE, and EBLPs of random effects,
+    ## get GLS estimator of school FE, and EBLPs of block means,
     ## treating block*pattern contributions for each school as fixed
     ##
     ## NOTE: "Z" matrix in standard notation is I here because Y is
