@@ -134,7 +134,18 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	find the smallest value that does not result in
 	collinearity between the block-by-pattern dummy variables and
 	the school dummy variables, and collapse any patterns with
-	counts fewer than this value.
+	counts fewer than this value.  This parameter does not affect
+	model fit if \code{control$alpha_zero = TRUE}.
+      }
+
+      \item{alpha_zero: }{
+	Logical.  If \code{TRUE}, sets all block-by-pattern parameters
+	(denoted by "alpha" in Lockwood, Castellano and McCaffrey, 2020)
+	to zero. This results in a model in which the only fixed mean
+	parameters are the school fixed effects.  This guarantees that the
+	EBLP for each school can be expressed formally as a weighted
+	average of the growth scores linked to that school.  Default is
+	\code{FALSE}.
       }
       
       \item{blockpair_student_nmin: }{
@@ -462,7 +473,8 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
       estimated school fixed effects in \code{bhat_ols} will not
       generally correspond to the final estimated school fixed effects
       (the \code{mu} elements of \code{dsch}), which are obtained using
-      generalized least squares in a later estimation step.
+      generalized least squares in a later estimation step.  This is
+      \code{NULL} if \code{control$alpha_zero = TRUE}.
     }
 
     \item{modstats: }{
