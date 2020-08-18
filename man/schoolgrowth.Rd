@@ -240,6 +240,12 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	requirements.  The default value is the minimum of 50 and the
 	number of schools with growth measures in at least two blocks.
       }	
+
+      \item{patterns_only: }{
+	Logical. If TRUE, function stops after evaluating student
+	patterns and applies collapsing rules, and returns pattern
+	information without fitting model. Default is FALSE.
+      }
       
       \item{regularize_Ghat: }{
 	Logical. An experimental option for using shrinkage to reduce

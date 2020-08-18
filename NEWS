@@ -2,18 +2,10 @@
 ## TODOs
 ###################
 
-perhaps switch order of nearPD() and expansion from (B-1) to B because the
-existing order of operations appears not to be invariant to ordering of blocks,
-which boils down to not being invariant to labels.  also consider whether
-forcing PSD via spectral decomposition rather than nearPD, either at (B-1) or B
-stage, would be invariant. (NOTE: in explorations, switching labels on blocks to
-switch order did not impact Rraw and Graw, but did have some effect on G)
+revised matrix adjustment procedures, arguments and help file
 
 add something about variance decomposition diagnostics (comparing estimated and
 observed moments), perhaps after adjusting for block*pattern effects
-
-add control option "report_patterns_only" that halts and returns after the
-student pattern block of code
 
 allow target to be a list of named vectors so that we get BLPs for a vector of
 outcomes simultaneously

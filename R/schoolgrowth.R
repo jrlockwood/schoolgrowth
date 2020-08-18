@@ -84,6 +84,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         control$jackknife <- TRUE
     }
 
+    if(is.null(control$patterns_only)){
+        control$patterns_only <- FALSE
+    }
+               
     if(is.null(control$regularize_Ghat)){
         control$regularize_Ghat <- FALSE
     }
@@ -583,6 +587,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
     tab_patterns <- tmp
     rownames(tab_patterns) <- 1:nrow(tab_patterns)
+
+    if(control$patterns_only){
+        return(tab_patterns)
+    }
     
     ## assign the collapsed patterns to "collapsed"
     if(any(tmp$cpattern=="collapsed")){
