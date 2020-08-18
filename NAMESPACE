@@ -6,7 +6,5 @@ importFrom("methods", "as", "is", "new")
 
 importFrom("Matrix", "bdiag", "forceSymmetric", "sparse.model.matrix", "sparseMatrix", "sparseVector", "symmpart")
 
-importFrom("MASS", "ginv")
-
 importMethodsFrom("Matrix", "crossprod", "tcrossprod", "solve", "diag", "t", "isSymmetric", "norm")
 
