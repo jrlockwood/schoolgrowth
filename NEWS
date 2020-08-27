@@ -2,15 +2,15 @@
 ## TODOs
 ###################
 
-revised matrix adjustment procedures, arguments and help file
-
-add something about variance decomposition diagnostics (comparing estimated and
-observed moments), perhaps after adjusting for block*pattern effects
+add checks on control parameters
 
 allow target to be a list of named vectors so that we get BLPs for a vector of
 outcomes simultaneously
 
 generalize the syntax of target to allow importance weights on blocks, like you
 might need if defining a multi-year target
+
+add something about variance decomposition diagnostics (comparing estimated and
+observed moments), perhaps after adjusting for block*pattern effects
 
 create S3 class and associated summary and plot methods

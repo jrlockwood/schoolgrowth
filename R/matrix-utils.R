@@ -95,84 +95,127 @@ nearPD2	<- function (x,fix0s=FALSE,corr = FALSE, keepDiag = FALSE, do2eigen = TR
     }
 }
 
-GRadj <- function(M, nzlocs, stz, adjmethod, eig.tol, eig.min=NULL){
-    ## function to iteratively adjust too small, or negative, eigenvalues and set
-    ## such eigenvalues to smallest desired value, using either spectral
-    ## decomposition or nearPD2, while enforcing fixed zeros, and optionally
-    ## maintaining sum-to-zero constraints.  Note that if adjmethod=="nearPD",
-    ## there is not option to set minimim desired eigenvalue, we just take
-    ## whatever non-negative values are returned.
-    stopifnot( (class(M) == "dsCMatrix") && is.logical(stz) && is.matrix(nzlocs) && is.character(adjmethod) && (eig.tol >= 0.0) )
+
+Radj <- function(M, nzlocs, adj_method, eig.tol, eig.min=NULL){
+    ## function for R adjustment to PSD, maintaining fixed zeros
+    ## if specified via allowing only the non-zero elements in "nzlocs"
+    ##
+    ## if adj_method=="nearPD", calls nearPD2 with eig.tol
+    ##
+    ## if adj_method=="spectral", iteratively adjusts eigenvalues that are
+    ## less than (eig.tol * max) and imposing fixed zeros until
+    ## all eigenvalues exceed (eig.min * max)
+    ##
+    ## NOTE: no sum-to-zero constraints in this case
+    ## NOTE: when adj_method=="nearPD" there should be no need for iteration,
+    ## although for simplificity of code, it is placed within the while() loop
+    stopifnot( (class(M) == "dsCMatrix") && is.matrix(nzlocs) && is.character(adj_method) && (eig.tol >= 0.0) )
     .B <- nrow(M)
 
-    if(!(adjmethod %in% c("spectral","nearPD"))){
-        stop("in GRadj: invalid adjmethod")
+    if(!(adj_method %in% c("spectral","nearPD"))){
+        stop("in Radj: invalid adj_method")
     }
 
-    if(adjmethod=="nearPD" && !is.null(eig.min)){
-        stop("in GRadj: eig.min applies only with adjmethod=='spectral'")
+    if(adj_method=="nearPD" && !is.null(eig.min)){
+        stop("in Radj: eig.min applies only with adj_method=='spectral'")
     }
 
-    if(adjmethod=="spectral"){
+    if(adj_method=="spectral"){
         if(is.null(eig.min)){
             eig.min <- 0.0
         }
         if(eig.tol < eig.min){
-            stop("in GRadj: eig.tol must be at least as large as eig.min")
+            stop("in Radj: eig.tol must be at least as large as eig.min")
         }
     }
-    
-    if(stz && (max(abs(c(apply(M, 1, sum), apply(M, 2, sum)))) > 1e-10) ){
-        stop("in GRadj: M does not appear to satisfy sum-to-zero constraints")
-    }
 
-    ## get initial spectral decomposition to decide if adjustment is needed
+    Madj <- M    
     e    <- eigen(M)
     lam  <- e$values
     U    <- e$vectors
-
-    if(stz){
-        zloc <- which(apply(U, 2, var) < 1e-10)
-        stopifnot(length(zloc)==1L)
-        adj_needed <- any(lam[-zloc] < (eig.tol * max(lam)))
-    } else {
-        zloc <- integer(0)
-        adj_needed <- any(lam < (eig.tol * max(lam)))
-    }
-
-    Madj <- M
-    if(adj_needed){
+    
+    if(any(lam < (eig.tol * max(lam)))){
         done <- FALSE
         while(!done){
-            if(adjmethod=="spectral"){
-                tofix      <- setdiff( which(lam < (eig.tol * max(lam))), zloc )
-                lam[tofix] <- eig.min * max(lam)
-                tmp        <- U %*% diag(lam) %*% t(U)
+            if(adj_method=="spectral"){
+                lam[which(lam < (eig.tol * max(lam)))] <- eig.min * max(lam)
+                tmp <- U %*% diag(lam) %*% t(U)
             } else {
-                .res <- nearPD2(Madj, fix0s=TRUE, do2eigen=FALSE, eig.tol=eig.tol, conv.tol=1e-11, maxit=5000, keepDiag=FALSE)
+                .res <- nearPD2(Madj, fix0s=TRUE, do2eigen=FALSE, eig.tol=eig.tol, conv.tol=1e-11, maxit=5000)
                 if(!.res$converged){
-                    stop("in GRadj: nearPD2 did not converge; try spectral adjustment method")
+                    stop("in Radj: nearPD2 did not converge; try control$Radj_method = 'spectral'")
                 }
                 tmp <- as.matrix(.res$mat)
             }
             
             Madj <- sparseMatrix(i = nzlocs[,1], j = nzlocs[,2], x = tmp[nzlocs], dims=c(.B,.B), symmetric=TRUE)
-            if(stz && (max(abs(c(apply(Madj, 1, sum), apply(Madj, 2, sum)))) > 1e-10) ){
-                stop("in GRadj: Madj does not satisfy sum-to-zero constraints")
-            }
-            
             e    <- eigen(Madj)
-            print(lam  <- e$values)
+            lam  <- e$values
             U    <- e$vectors
+            
+            done <- all(lam >= (ifelse(adj_method=="spectral", (eig.min * max(lam)), -.Machine$double.eps)))
+        }
+    }
+    return(Madj)
+}
 
-            if(stz){
-                zloc <- which(apply(U, 2, var) < 1e-10)
-                stopifnot(length(zloc)==1L)
-                done <- all(lam[-zloc] >= (eig.tol * max(lam)))
-            } else {
-                zloc <- integer(0)
-                done <- all(lam >= (eig.tol * max(lam)))
+Gadj <- function(M, adj_method, eig.tol, eig.min=NULL){
+    ## function for G adjustment to PSD, accounting for sum-to-zero constraints
+    ##
+    ## if adj_method=="nearPD", calls nearPD2 with eig.tol
+    ##
+    ## if adj_method=="spectral", sets eigenvalues less than (eig.tol * max)
+    ## equal to (eig.min * max), aside from the eigenvalue corresponding
+    ## to the sum-to-zero constraints
+    ##
+    ## NOTE: fixed zeros are not allowed, unlike for R adjustment
+    stopifnot( (class(M) == "dspMatrix") && is.character(adj_method) && (eig.tol >= 0.0) )
+    
+    if(!(adj_method %in% c("spectral","nearPD"))){
+        stop("in Gadj: invalid adj_method")
+    }
+
+    if(adj_method=="nearPD" && !is.null(eig.min)){
+        stop("in Gadj: eig.min applies only with adj_method=='spectral'")
+    }
+
+    if(adj_method=="spectral"){
+        if(is.null(eig.min)){
+            eig.min <- 0.0
+        }
+        if(eig.tol < eig.min){
+            stop("in Gadj: eig.tol must be at least as large as eig.min")
+        }
+    }
+
+    if(max(abs(c(apply(M, 1, sum), apply(M, 2, sum)))) > 1e-10){
+        stop("in Gadj: M does not appear to satisfy sum-to-zero constraints")
+    }
+
+    Madj <- M
+    e    <- eigen(M)
+    lam  <- e$values
+    U    <- e$vectors
+    zloc <- which(apply(U, 2, var) < 1e-10)
+    stopifnot(length(zloc)==1L)
+
+    if(any(lam[-zloc] < (eig.tol * max(lam)))){
+
+        if(adj_method=="spectral"){
+            tofix      <- setdiff( which(lam < (eig.tol * max(lam))), zloc )
+            lam[tofix] <- eig.min * max(lam)
+            tmp        <- U %*% diag(lam) %*% t(U)
+        } else {
+            .res <- nearPD(M, do2eigen=FALSE, eig.tol=eig.tol, conv.tol=1e-11, maxit=5000)
+            if(!.res$converged){
+                stop("in Gadj: nearPD2 did not converge; try control$Gadj_method = 'spectral'")
             }
+            tmp <- as.matrix(.res$mat)
+        }
+
+        Madj <- new("dspMatrix", Dim=rep(nrow(tmp),2), x=tmp[lower.tri(tmp, diag=TRUE)], uplo="L")
+        if(max(abs(c(apply(Madj, 1, sum), apply(Madj, 2, sum)))) > 1e-10){
+            stop("in Gadj: Madj does not satisfy sum-to-zero constraints")
         }
     }
     return(Madj)

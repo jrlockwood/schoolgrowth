@@ -4,9 +4,10 @@
 \title{Smoothing School-Level Growth Measures Using Empirical Best Linear Prediction}
 
 \description{Uses student-level growth scores for particular years,
-  grades and subjects to compute direct estimates, and empirical
-  best linear predictors (EBLPs), of specified school-level aggregate
-  growth targets.}
+  grades, and subjects to compute direct estimates and empirical best
+  linear predictors (EBLPs) of specified school-level aggregate growth
+  targets.  Estimated MSEs for both direct estimates and EBLPs are also
+  provided.}
 
 \usage{
 schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
@@ -117,13 +118,6 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	step of the estimation process.  Default is FALSE.
       }	
 
-      \item{school_nmin: }{
-	Integer. The minimum number of growth scores required for a
-	school to be included in the analysis.  Current behavior is to
-	halt with an error message if any school has fewer than
-	\code{school_nmin} associated growth scores. Default is 1.
-      }
-
       \item{pattern_nmin: }{
 	Integer. The minimum number of students required to define a
 	pattern for the pattern-mixture specification of the model (see
@@ -142,9 +136,9 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	Logical.  If \code{TRUE}, sets all block-by-pattern parameters
 	(denoted by "alpha" in Lockwood, Castellano and McCaffrey, 2020)
 	to zero. This results in a model in which the only fixed mean
-	parameters are the school fixed effects.  This guarantees that the
-	EBLP for each school can be expressed formally as a weighted
-	average of the growth scores linked to that school.  Default is
+	parameters are the school fixed effects.  This guarantees that
+	the EBLP for each school can be expressed as weighted average of
+	the growth scores linked to that school.  Default is
 	\code{FALSE}.
       }
       
@@ -159,48 +153,11 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	growth measures, the function will halt with an error message.
 	Default is 100.
       }
-
-      \item{blockpair_school_nmin: }{
-	Integer. The minimum number of schools required to estimate a
-	block random effect covariance (i.e., an off-diagonal element of
-	the matrix \eqn{G}{G}; see Details) for a pair of blocks.  Pairs
-	of blocks with fewer than \code{blockpair_school_nmin} schools
-	with at least one growth score in each of the two blocks will
-	have the corresponding element of \eqn{G}{G} set to 0.  If any
-	individual block has fewer than \code{blockpair_school_nmin}
-	schools with growth measures, the function will halt with an
-	error message.  Default is 10.
-      }
       
-      \item{eig.tol: }{
-	Numeric. Used to decide when eigenvalues of estimated values of
-	\eqn{R}{R} and \eqn{G}{G} are sufficiently small to be treated as
-	zero.  Eigenvalues lambda_k are treated as zero when the ratio
-	of lambda_k to the largest eigenvalue of the matrix is less than
-	or equal to eig.tol.  Default is 1e-06.
-      }
-
-      \item{keepDiag_first: }{
-	Logical. Used in the coercion of estimated values of \eqn{R}{R}
-	and \eqn{G}{G} to be positive semi-definite (PSD).  If
-	TRUE, the initial attempt to coerce the matrix to be PSD
-	will do so treating the diagonal elements as fixed. If
-	FALSE, diagonal elements may be altered in the coercion
-	to PSD.  Default is FALSE.
-      }
-
       \item{return_d: }{
 	Logical.  If TRUE, the dataset of growth measures
 	\code{d} is returned, along with additional fields added by the
 	\code{schoolgrowth} function.  Default is FALSE.
-      }
-
-      \item{return_schjack: }{
-	Logical.  If TRUE, and if jackknifing is used, returns
-	extra jackknife information for each school.  This can result
-	in large objects if the number of schools and jackknife batches
-	are both large.  Setting to FALSE will provide only summary
-	statistics across jackknife batches. Default is TRUE.
       }
       
       \item{mse_blp_chk: }{
@@ -216,7 +173,8 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	EBLPs due to the estimation of the matrix \eqn{G}{G}.  The
 	computation of this term will increase both computation time and
 	RAM footprint, but will result in estimated MSEs that tend to be
-	closer to true MSEs.  Default is TRUE.
+	closer to true MSEs.  Default is TRUE.  If \eqn{G}{G} is
+	supplied, this option is ignored.
       }
 
       \item{jackknife_J: }{
@@ -239,18 +197,22 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	exceeds 100, a warning will be issued about possible RAM
 	requirements.  The default value is the minimum of 50 and the
 	number of schools with growth measures in at least two blocks.
-      }	
+	If \eqn{G}{G} is supplied, this option is ignored.
+      }
+
+      \item{return_schjack: }{
+	Logical.  If TRUE, and if jackknifing is
+	used, returns extra jackknife information for each school.  This
+	can result in large objects if the number of schools and
+	jackknife batches are both large.  Setting to FALSE will provide
+	only summary statistics across jackknife batches. Default is
+	TRUE. If \eqn{G}{G} is supplied, this option is ignored.
+      }
 
       \item{patterns_only: }{
 	Logical. If TRUE, function stops after evaluating student
 	patterns and applies collapsing rules, and returns pattern
 	information without fitting model. Default is FALSE.
-      }
-      
-      \item{regularize_Ghat: }{
-	Logical. An experimental option for using shrinkage to reduce
-	error in the elements of the estimated value of \eqn{G}{G}.
-	Default is FALSE.
       }
       
       \item{R: }{
@@ -267,17 +229,84 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
         calls to the function uses the value of \eqn{R}{R}, or a
         perturbation of it, from the initial fit.  Default is
         \code{NULL} so that \eqn{R}{R} is estimated from the supplied
-        data.
+        data.  If \eqn{R}{R} is supplied, the control options
+	\code{Radj_method}, \code{Radj_eig_tol}, and \code{Radj_eig_min}
+	are ignored.
       }
 
       \item{G: }{
-	Analogous to \code{control$R}, but for the variance-covariance
-	matrix \eqn{G}{G} of the block random effects for each school.  If
-	\code{control$G} is supplied, it must have the appropriate row
-	names and column names, and must satisfy the sum-to-zero
-	constraints implied by the model (see Details and References).
-	Default is \code{NULL} so that \eqn{G}{G} is estimated from the
-	supplied data.
+	Analogous to \code{control$R}, but for the
+	variance-covariance matrix \eqn{G}{G} of the block random
+	effects for each school, and must be a member of the class
+	\code{dspMatrix} of dense, symmetric matrices from the
+	\code{\link{Matrix}} package. If \code{control$G} is supplied,
+	it must have the appropriate row names and column names, and
+	must satisfy the sum-to-zero constraints implied by the model
+	(see Details and References).  Default is \code{NULL} so that
+	\eqn{G}{G} is estimated from the supplied data.  If \eqn{G}{G}
+	is supplied, the control options \code{Gadj_method},
+	\code{Gadj_eig_tol}, and \code{Gadj_eig_min} are ignored.
+      }
+
+      \item{Radj_method: }{
+	Character string.  If equal to "nearPD", uses an adaptation of
+	the \code{\link{nearPD}} function in the \code{\link{Matrix}}
+	package to coerce the estimated value of \eqn{R}{R} to be
+	positive semi-definite (PSD), accounting for fixed zeros of the
+	matrix.  If equal to "spectral", the function uses the spectral
+	decomposition of the estimated value of \eqn{R}{R} and
+	manipulates eigenvalues to coerce \eqn{R}{R} to be PSD. Refer
+	to control parameters \code{Radj_eig_tol} and
+	\code{Radj_eig_min}.  Default is "nearPD".
+      }
+
+      \item{Radj_eig_tol: }{
+	Non-negative number.  Used to decide if \eqn{R}{R} should be coerced to
+	PSD.  Coercion happens if the ratio of any eigenvalue lambda_k
+	of \eqn{R}{R} to the largest eigenvalue of \eqn{R}{R} is less
+	than \code{Radj_eig_tol}.  Default is 1e-10.
+      }
+
+      \item{Radj_eig_min: }{
+	Non-negative number less than or equal to
+	\code{control$Radj_eig_tol}.  If \eqn{R}{R} requires adjustment
+	as determined by comparing its eigenvalues to
+	\code{control$Radj_eig_tol}, and if \code{control$Radj_method ==
+	"spectral"}, then the smallest eigenvalue of the adjusted
+	\eqn{R}{R} will be greater than or equal to \code{Radj_eig_min}.
+	Default is 0.0.
+      }
+
+      \item{Gadj_method: }{
+	Character string.  If equal to "nearPD", uses the the
+	\code{\link{nearPD}} function in the \code{\link{Matrix}}
+	package to coerce the estimated value of \eqn{G}{G} to be
+	positive semi-definite (PSD), maintaining the sum-to-zero
+	constraints (see Details).  If equal to "spectral", the function
+	uses the spectral decomposition of the estimated value of
+	\eqn{G}{G} and manipulates eigenvalues to coerce \eqn{G}{G} to
+	be PSD, again maintaining the sum-to-zero constraints. Refer to
+	control parameters \code{Gadj_eig_tol} and \code{Gadj_eig_min}.
+	Default is "nearPD".
+      }
+
+      \item{Gadj_eig_tol: }{
+	Non-negative number.  Used to decide if \eqn{G}{G} should be
+	coerced to PSD.  Coercion happens if the ratio of any eigenvalue
+	lambda_k of \eqn{G}{G}, other than the one corresponding to the
+	sum-to-zero constraints, to the largest eigenvalue of \eqn{G}{G}
+	is less than \code{Gadj_eig_tol}.  Default is 1e-10.
+      }
+
+      \item{Gadj_eig_min: }{
+	Non-negative number less than or equal to
+	\code{control$Gadj_eig_tol}. If \eqn{G}{G} requires adjustment
+	as determined by comparing its eigenvalues to
+	\code{control$Gadj_eig_tol}, and if \code{control$Gadj_method ==
+	"spectral"}, then the smallest eigenvalue of the adjusted
+	\eqn{R}{R} will be greater than or equal to \code{Radj_eig_min},
+	aside from the one corresponding to the sum-to-zero constraints.
+	Default is 0.0.
       }
     }
   }
@@ -341,21 +370,14 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
   each school in the sample served either grades 4-5, or grades 6-8,
   with no schools serving more extensive grade ranges.
 
-  The EBLP operations requires \eqn{R}{R} and \eqn{G}{G} to be PSD.
-  The estimated values of these matrices may not be PSD without
-  modifications.  The \code{schoolgrowth} function coerces these
-  matrices to be PSD using an adaptation of the \code{\link{nearPD}}
-  function in the \code{\link{Matrix}} package to accommodate fixed
-  zeros in the estimated matrices.  The default behavior for the
-  coercion of each of \eqn{R}{R} and \eqn{G}{G} is to first use
-  \code{\link{nearPD}} with no restrictions.  If this does not converge,
-  a second attempt is made using \code{\link{nearPD}} with the diagonal
-  values of the matrix held constant.  The order of these two steps can
-  be switched by setting \code{control$keepDiag_first=TRUE}.  If neither
-  step converges, the a PSD approximation is constructed using a
-  spectral decomposition and setting all eigenvalues that are less than
-  (\code{control$eig.tol} times the maximum eigenvalue) to zero.
-
+  The EBLP operations require \eqn{R}{R} and \eqn{G}{G} to be PSD.  The
+  estimated values of these matrices may not be PSD without
+  modifications.  For each of \eqn{R}{R} and \eqn{G}{G}, the
+  \code{schoolgrowth} function provides two options for this coercion;
+  refer to the control options \code{Radj_method}, \code{Radj_eig_tol},
+  \code{Radj_eig_min}, \code{Gadj_method}, \code{Gadj_eig_tol}, and
+  \code{Gadj_eig_min}.
+  
   The function can be used to compute direct estimates, EBLPs, and
   associated MSE estimates for grouping variables other than schools
   (e.g., school districts) simply by passing that grouping variable as
@@ -430,22 +452,19 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
       contrast.
     }
 
-    \item{dblockpairs: }{
-      A dataframe with \eqn{B(B+1)/2}{B(B+1)/2} rows providing meta-data
-      for blocks and all pairwise combinations of blocks.  Rows are in
-      column-major order for a symmetric matrix. Fields include the
-      block labels for each member of the pair, the numeric block ID for
-      each member of the pair, the number of schools with growth scores
-      in both members of the pair, the number of students with growth
-      score in both members of the pair, and information about the
-      estimated matrices \eqn{G}{G} and \eqn{R}{R}.  The field
-      \code{G_est} is a logical variable indicating whether each pair of
-      blocks has an estimated random-effect covariance parameter (vs the
-      parameter being set to 0).  The field \code{Graw} contains the
-      estimated covariance parameters prior to PSD adjustment, whereas
-      the field \code{G} contains the estimated covariance parameters
-      after PSD adjustment.  The field \code{R_est}, \code{Rraw} and
-      \code{R} are analogous for the error variance-covariance matrix.
+    \item{dblockpairs: }{ A dataframe with \eqn{B(B+1)/2}{B(B+1)/2} rows
+      providing meta-data for blocks and all pairwise combinations of
+      blocks.  Rows are in column-major order for a symmetric
+      matrix. Fields include the block labels for each member of the
+      pair, the numeric block ID for each member of the pair, the number
+      of schools with growth scores in both members of the pair, the
+      number of students with growth score in both members of the pair,
+      and information about the estimated matrices \eqn{G}{G} and
+      \eqn{R}{R}.  The field \code{Graw} contains the estimated
+      covariance parameters prior to PSD adjustment, whereas the field
+      \code{G} contains the estimated covariance parameters after PSD
+      adjustment.  The field \code{R_est}, \code{Rraw} and \code{R} are
+      analogous for the error variance-covariance matrix.
     }
 
     \item{dsch: }{
@@ -511,7 +530,7 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
     \item{G: }{
       The estimated variance-covariance matrix \eqn{G} of the
       school-by-block random effects, after any PSD adjustment. It is a
-      member of the class \code{dsCMatrix} of sparse, symmetric matrices
+      member of the class \code{dspMatrix} of dense, symmetric matrices
       from the \code{\link{Matrix}} package.
     }
 
@@ -530,8 +549,8 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
     \item{G_jack: }{
       If \code{control$jackknife = TRUE}, a list of length equal to the
       number of jackknife batches used in the EBLP MSE estimation
-      procedure.  Each element is a member of the class \code{dsCMatrix}
-      of sparse, symmetric matrices from the \code{\link{Matrix}}
+      procedure. Each element is a member of the class \code{dspMatrix}
+      of dense, symmetric matrices from the \code{\link{Matrix}}
       package, equal to the estimated value of \eqn{G} for each
       jackknife batch.
     }
@@ -539,9 +558,9 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
     \item{Gstar_jack: }{
       If \code{control$jackknife = TRUE}, a list of length equal to the
       number of jackknife batches used in the EBLP MSE estimation
-      procedure.  Each element is a member of the class \code{dsCMatrix}
-      of sparse, symmetric matrices from the \code{\link{Matrix}}
-      package, equal to the estimated value of \code{G*} for each
+      procedure.  Each element is a member of the class \code{dspMatrix}
+      of dense, symmetric matrices from the \code{\link{Matrix}}
+      package,  equal to the estimated value of \code{G*} for each
       jackknife batch.  Each is a \eqn{((B-1) \times (B-1))}{((B-1) x
       (B-1))} matrix corresponding to the estimable parameters of
       \eqn{G} in light of the sum-to-zero constraints.  See Lockwood,
