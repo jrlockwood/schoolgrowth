@@ -34,7 +34,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     }
 
     ## ###########################
-    ## parse/set control parameters
+    ## parse/check/set control parameters
     ## ###########################
     if(!is.list(control)){
         stop("'control' must be a list")
@@ -42,38 +42,58 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
     if(is.null(control$quietly)){
         control$quietly <- TRUE
+    } else if(!is.logical(control$quietly)){
+        stop("control$quietly must be logical")
     }
-        
+      
     if(is.null(control$pattern_nmin)){
         control$pattern_nmin <- 100
+    }
+    .ok <- (is.character(control$pattern_nmin) && (control$pattern_nmin=="min")) || (is.numeric(control$pattern_nmin) && (control$pattern_nmin > 0))
+    if(!.ok){
+        stop("control$pattern_nmin must be either a non-negative integer or the character string 'min'")
     }
 
     if(is.null(control$alpha_zero)){
         control$alpha_zero <- FALSE
+    } else if(!is.logical(control$alpha_zero)){
+        stop("control$alpha_zero must be logical")
     }
     
     if(is.null(control$blockpair_student_nmin)){
         control$blockpair_student_nmin <- 100
+    } else if( !is.numeric(control$blockpair_student_nmin) || (control$blockpair_student_nmin < 0) ){
+        stop("control$blockpair_student_nmin must be a non-negative number")
     }
 
     if(is.null(control$return_d)){
         control$return_d <- FALSE
+    } else if(!is.logical(control$return_d)){
+        stop("control$return_d must be logical")
     }
 
     if(is.null(control$mse_blp_chk)){
         control$mse_blp_chk <- FALSE
+    } else if(!is.logical(control$mse_blp_chk)){
+        stop("control$mse_blp_chk must be logical")
     }
 
     if(is.null(control[["jackknife"]])){
         control$jackknife <- TRUE
+    } else if(!is.logical(control$jackknife)){
+        stop("control$jackknife must be logical")
     }
 
     if(is.null(control$return_schjack)){
         control$return_schjack <- TRUE
+    } else if(!is.logical(control$return_schjack)){
+        stop("control$return_schjack must be logical")
     }
         
     if(is.null(control$patterns_only)){
         control$patterns_only <- FALSE
+    } else if(!is.logical(control$patterns_only)){
+        stop("control$patterns_only must be logical")
     }
 
     R_supplied    <- !is.null(control[["R"]])
