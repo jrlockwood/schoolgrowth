@@ -1060,13 +1060,15 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     ## directly additive in the school*block random effects, and
     ## "X" matrix in standard notation is just a vector of 1.
     ##
-    ## NOTE: (4/28/2020) reduce cost of Matrix overhead using
+    ## NOTE: (4/28/2020; 9/2/2020) reduce cost of Matrix overhead using
     ## ".Gm" and ".Rm" to try to speed up calculations with large S*J
     ## #############################################
     if(!control$quietly){
-        cat("Computing GLS estimators, raw EBLPs, and MSEs (may be slow, especially with jackknife)...\n")
+        cat("Computing GLS estimators, block-level EBLPs, and MSEs (may be slow, especially with jackknife)...\n")
     }
 
+    .Gm <- lapply(G, as.matrix)
+    
     for(s in 1:S){
         x     <- dsch[[s]]
         nb    <- x$nblock
@@ -1085,10 +1087,10 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 
         for(j in 1:(J+1)){
             ## GLS estimator of mu, plus EBLP at school*block level, for this "j"
-            .Gm   <- as.matrix(G[[j]][b,b,drop=FALSE])
-            .vinv <- solve(.Gm + .Rm)
+            .Gmj  <- .Gm[[j]][b,b,drop=FALSE]
+            .vinv <- solve(.Gmj + .Rm)
             .mu   <- sum(as.vector(.vinv %*% .Y)) / sum(.vinv)
-            .blp  <- x$tab$alpha_sb + as.vector(.mu + (.Gm %*% .vinv %*% (.Y - .mu)))
+            .blp  <- x$tab$alpha_sb + as.vector(.mu + (.Gmj %*% .vinv %*% (.Y - .mu)))
 
             if(j==1){
                 x$mu      <- .mu
@@ -1153,6 +1155,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
             cat(paste(s,"schools done\n"))
         }
     }
+    rm(.Rm, .Gm); gc()
 
     ## summaries of EBLPS
     if(!control$quietly){
