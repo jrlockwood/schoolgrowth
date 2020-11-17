@@ -1,7 +1,7 @@
 \name{schoolgrowth}
 \alias{schoolgrowth}
 
-\title{Smoothing School-Level Growth Measures Using Empirical Best Linear Prediction}
+\title{Improving Accuracy of School-Level Growth Measures Using Empirical Best Linear Prediction}
 
 \description{Uses student-level growth scores for particular years,
   grades, and subjects to compute direct estimates and empirical best
