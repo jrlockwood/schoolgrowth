@@ -2,6 +2,10 @@
 ## TODOs
 ###################
 
+## 10/28/2021: bugfix:
+update maxit to 100,000 in the matrix-utils.R file for the Radj function:
+.res <- nearPD2(Madj, fix0s=TRUE, do2eigen=FALSE, eig.tol=eig.tol, conv.tol=1e-11, maxit=100000_)
+
 allow target to be a list of named vectors so that we get BLPs for a vector of
 outcomes simultaneously
 

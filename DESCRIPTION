@@ -2,10 +2,10 @@ Package: schoolgrowth
 Type: Package
 Title: Functions for Improving Accuracy of School-Level Growth Measures Using Empirical Best Linear Prediction
 Version: 0.6-3
-Date: 2020-09-02
+Date: 2022-03-27
 Depends: R (>= 3.5.0)
 Imports: stats, methods, Matrix
 Author: J.R. Lockwood
-Maintainer: J.R. Lockwood <jrlockwood@ets.org>
+Maintainer: J.R. Lockwood <jr@duolingo.com>
 Description: Provides tools for smoothing school-level growth measures across years, grades and/or subjects using empirical best linear prediction methods.
 License: GPL (>= 2)
