@@ -285,8 +285,7 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	constraints (see Details).  If equal to "spectral", the function
 	uses the spectral decomposition of the estimated value of
 	\eqn{G}{G} and manipulates eigenvalues to coerce \eqn{G}{G} to
-	be PSD, again maintaining the sum-to-zero constraints. Refer to
-	control parameters \code{Gadj_eig_tol} and \code{Gadj_eig_min}.
+	be PSD, again maintaining the sum-to-zero constraints. If method 	equal to "rco", the function uses regularized Cholesky 	optimization to estimate \eqn{G}{G} to be positive semi-definite 	(PSD). Refer to control parameters \code{Gadj_eig_tol} and 	\code{Gadj_eig_min}.
 	Default is "nearPD".
       }
 
@@ -295,7 +294,7 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	coerced to PSD.  Coercion happens if the ratio of any eigenvalue
 	lambda_k of \eqn{G}{G}, other than the one corresponding to the
 	sum-to-zero constraints, to the largest eigenvalue of \eqn{G}{G}
-	is less than \code{Gadj_eig_tol}.  Default is 1e-10.
+	is less than \code{Gadj_eig_tol}.  Only applicable for Gadj_method 	equal to "nearPD" or "spectral". Default is 1e-10.
       }
 
       \item{Gadj_eig_min: }{
@@ -306,8 +305,16 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
 	"spectral"}, then the smallest eigenvalue of the adjusted
 	\eqn{R}{R} will be greater than or equal to \code{Radj_eig_min},
 	aside from the one corresponding to the sum-to-zero constraints.
-	Default is 0.0.
+	Only applicable for Gadj_method 	equal to "nearPD" or "spectral". 	Default is 0.0.
       }
+
+	\item{Gadj_optmethod: }{
+	Character string. Can take on any optimization method available 	for the "optim" function. Only applicable for Gadj_method equal to 	"rco". Default is "BFGS". 
+	}
+
+	\item{parallel: }{
+	Logical. If TRUE, parallelization is used when implementing jack-	knife replications for estimating \eqn{G}{G}. If FALSE, 	parallelization is 	not used. Using parallelization can help 	speed up the estimation of \eqn{G}{G}, particularly when using 	Gadj_method equal to "rco" and using jack-knife when have a large 	number of aggregation units. Default is FALSE.
+	} 
     }
   }
 }

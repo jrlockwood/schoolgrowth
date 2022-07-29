@@ -123,7 +123,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if(is.null(control$Gadj_method)){
             control$Gadj_method <- "nearPD"
         }
-        if(!(control$Gadj_method %in% c("nearPD","spectral"))){
+        if(!(control$Gadj_method %in% c("nearPD","spectral","rco"))){
             stop("Invalid specification of control$Gadj_method")
         }
         if(is.null(control$Gadj_eig_tol)){
@@ -135,6 +135,18 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         if( (control$Gadj_method == "spectral") && (control$Gadj_eig_tol < control$Gadj_eig_min) ){
             stop("control$Gadj_eig_tol must be greater than or equal to control$Gadj_eig_min")
         }
+        if(is.null(control$parallel)) {
+	    control$parallel <- FALSE
+        }
+        if(!(control$parallel %in% c(TRUE, FALSE))){
+	    stop("Invalid specificaiton of control$parallel")
+	}
+	if(control$Gadj_method=="rco" & is.null(control$Gadj_optmethod)){
+	    control$Gadj_optmethod <- "BFGS"
+	}
+	if((control$parallel=="rco") && (!control$Gadj_optmethod %in% c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN","Brent"))){
+	    stop("Invalid specification of control$Gadj_optmethod")
+	}
     }
     
     ## create block-level dataset "dblock" providing unique combinations of year*grade*subject
@@ -862,6 +874,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     posB[lower.tri(posB, diag=TRUE)] <- 1:B2
     
     ## loop over schools
+    Is_Pis <- vector("list",S)
     for(s in 1:S){
         x        <- dsch[[s]]
         stopifnot(all(x$oblocks == x$tab$blockid))
@@ -882,6 +895,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                 Pis[.b,] <- x$pis
             }
             Is        <- sparseMatrix(i=b,j=b,x=rep(1,x$nblock), dims=c(B,B), symmetric=TRUE)
+	    Is_Pis[[s]] <- Is - Pis
             me_adj    <- (Is - Pis) %*% x$R_sb %*% t(Is - Pis)
             .y        <- sparseMatrix(i = rep(1,x$nblock), j = b, x = x$tab$Y_sb_tilde - x$mu, dims=c(1,B))
             .piece    <- crossprod(.y) - me_adj
@@ -999,32 +1013,155 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
         ## weight matrix .W for GLS estimation
         .W  <- sparseMatrix(i=1:B2, j=1:B2, x=dblockpairs$nsch, dims=c(B2,B2), symmetric=TRUE)
 
+        ## making weights matrix that is BxB dim 
+        Wmat	<- matrix(NA,nrow=B,ncol=B)
+        for(i in 1:B) {
+	  for(j in 1:B) {
+	    if(i>=j) {
+	      Wmat[i,j] <- dblockpairs$nsch[dblockpairs$blockidi==i & dblockpairs$blockidj==j]
+	    }
+          }
+        }
+        Wmat[upper.tri(Wmat)] <- t(Wmat)[upper.tri(Wmat)]
+
         ## #########################################################
         ## compute Gstar for full sample and each jackknife sample.
         ## for each element of Gstar, compute G and force to PSD
         ## #########################################################        
-        for(j in 1:(J+1)){
+	##Non-parallel option
+	if(control$parallel==FALSE) {
+	   Graw 	<- vector("list",J+1)
+	   Gstar   	<- vector("list",J+1)
+	   G		<- vector("list",J+1)
+	   roc_curve	<- vector("list",J+1)
+
+   	   tm0    <- proc.time()
+
+           for(j in 1:(J+1)){
+                .Y     <- as.matrix(Ysum[[j]])
+                .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
+                cmat   <- as.matrix(Ysum[[j]])  
+                zsumj  <- as.matrix(Zsum[[j]])
+
+                ## solve for estimable parameters and construct Gstar and G
+	        ptm <- proc.time()
+                if(control$Gadj_method %in% c("nearPD","spectral")) {
+                  .xpx       <- t(Zsum[[j]]) %*% .W %*% Zsum[[j]]
+                  .xpy       <- t(Zsum[[j]]) %*% .W %*% .Y
+                  Gstar[[j]] <- new("dspMatrix", Dim=c(B-1L,B-1L), uplo="L", x=as.vector(solve(.xpx, .xpy)))
+                  .G         <- as.matrix(A %*% Gstar[[j]] %*% t(A))
+                  Graw[[j]]  <- new("dspMatrix", Dim=c(B,B), uplo="L", x=.G[lower.tri(.G, diag=TRUE)])
+                  ## PSD adjustment
+                  G[[j]]     <- Gadj(Graw[[j]], control$Gadj_method, control$Gadj_eig_tol, control$Gadj_eig_min)
+                  rownames(G[[j]]) <- colnames(G[[j]]) <- .blocknames
+	          roc_curve[[j]] 	<- NULL
+		}
+                if(control$Gadj_method=="rco") {
+	          outs	 	<- rco_fun(optmethod=control$Gadj_optmethod,zsum=zsumj,cmat=cmat,Wmat=Wmat) 
+                  Gstar[[j]]   	<- outs[[1]]
+                  .G          	<- as.matrix(A %*% Gstar[[j]] %*% t(A))
+                  .Graw        	<- new("dspMatrix", Dim=c(B,B), uplo="L", x=.G[lower.tri(.G, diag=TRUE)])
+                  G[[j]]        <- Graw[[j]]  <- .Graw
+	          roc_curve[[j]]	<- outs[[2]]$curve
+                }
+
+            rownames(G[[j]]) 	<- colnames(G[[j]]) <- .blocknames
+        }
+         print(tmN <- proc.time() - tm0)
+	}
+	##Parellelization 
+	if(control$parallel==TRUE) {
+
+          ##defining output for parallelization 
+          multiResultClass <- function(Gstar=NULL,Graw=NULL,G=NULL,roc_curve=NULL)  {
+	    me <- list(
+		Gstar  	= Gstar,
+		Graw	= Graw,
+   		G	= G,
+		roc_curve = roc_curve
+	    )
+	
+ 	   ## Set the name for the class
+ 	  class(me) <- append(class(me),"multiResultClass")
+ 	  return(me)
+          }
+
+	  #create the cluster
+	  n.cores <- parallel::detectCores() - 1
+          cl      <- parallel::makeCluster(n.cores)
+          registerDoParallel(cl)
+          tm0    <- proc.time()
+          oper   <- foreach(j=1:(J+1)) %do% {
             .Y     <- as.matrix(Ysum[[j]])
             .Y     <- .Y[lower.tri(.Y, diag=TRUE)]
+            cmat   <- as.matrix(Ysum[[j]])  
+            zsumj  <- as.matrix(Zsum[[j]])
 
             ## solve for estimable parameters and construct Gstar and G
-            .xpx       <- t(Zsum[[j]]) %*% .W %*% Zsum[[j]]
-            .xpy       <- t(Zsum[[j]]) %*% .W %*% .Y
-            Gstar[[j]] <- new("dspMatrix", Dim=c(B-1L,B-1L), uplo="L", x=as.vector(solve(.xpx, .xpy)))
-            .G         <- as.matrix(A %*% Gstar[[j]] %*% t(A))
-            .G         <- new("dspMatrix", Dim=c(B,B), uplo="L", x=.G[lower.tri(.G, diag=TRUE)])
-            ## PSD adjustment
-            G[[j]]     <- Gadj(.G, control$Gadj_method, control$Gadj_eig_tol, control$Gadj_eig_min)
-            rownames(G[[j]]) <- colnames(G[[j]]) <- .blocknames
-
-            ## add full-sample pieces to dblockpairs
-            if(j==1){
-                dblockpairs$Graw <- .G@x
-                dblockpairs$G    <- G[[j]]@x
+	    ptm <- proc.time()
+            if(control$Gadj_method %in% c("nearPD","spectral")) {
+              .xpx       <- t(Zsum[[j]]) %*% .W %*% Zsum[[j]]
+              .xpy       <- t(Zsum[[j]]) %*% .W %*% .Y
+              Gstar      <- new("dspMatrix", Dim=c(B-1L,B-1L), uplo="L", x=as.vector(solve(.xpx, .xpy)))
+              .G         <- as.matrix(A %*% Gstar %*% t(A))
+              .G         <- new("dspMatrix", Dim=c(B,B), uplo="L", x=.G[lower.tri(.G, diag=TRUE)])
+              ## PSD adjustment
+              G          <- Gadj(.G, control$Gadj_method, control$Gadj_eig_tol, control$Gadj_eig_min)
+	      roc_curve	 <- NULL
+              rownames(G) <- colnames(G) <- .blocknames
+            } 
+            if(control$Gadj_method=="rco") {
+	      outs	 <- rco_fun(optmethod=control$Gadj_optmethod,zsum=zsumj,cmat=cmat,Wmat=Wmat) 
+              Gstar      <- outs[[1]]
+              G          <- as.matrix(A %*% Gstar %*% t(A))
+              .G         <- new("dspMatrix", Dim=c(B,B), uplo="L", x=G[lower.tri(G, diag=TRUE)])
+              G          <- .G
+	      roc_curve	 <- outs[[2]]$curve
+              rownames(G) <- colnames(G) <- .blocknames
             }
+            rownames(G) 	<- colnames(G) <- .blocknames
+		result 		<- multiResultClass()
+		result$Gstar  	<- Gstar
+		result$Graw	<- .G
+   		result$G	<- G
+		result$error	<- error
+		result$condnum 	<- condnum
+		result$roc_curve 	<- roc_curve
+		return(result)
         }
-        rm(.Y, .W, .xpx, .xpy, Zsum, Ysum, .G)
-        
+        parallel::stopCluster(cl)
+        print(tmN <- proc.time() - tm0)
+
+	Graw 		<- sapply(oper, '[', 'Graw')
+	Gstar   	<- sapply(oper, '[', 'Gstar')
+	G		<- sapply(oper, '[', 'G')
+	Ginfo		<- list()
+	Ginfo$residual	<- oper[[1]]$error
+	Ginfo$condnum 	<- oper[[1]]$condnum
+	Ginfo$roc_curve	<- oper[[1]]$roc_curve
+	error		<- sapply(oper, '[', 'error')
+	condnum		<- sapply(oper, '[', 'condnum')
+	roc_curve	<- sapply(oper, '[', 'roc_curve')
+	}
+       ## add full-sample pieces to dblockpairs
+       dblockpairs$Graw <- Graw[[1]]@x
+       dblockpairs$G    <- G[[1]]@x
+        Ginfo	 <- list()
+        fgpi_raw <- vector("list",S)
+	fgpi_adj <- vector("list",S)
+	for(s in 1:S) {
+		if(!is.null(Is_Pis[[s]])) {
+			fgpi_raw[[s]] <- (Is_Pis[[s]]) %*% as.matrix(Graw[[1]]) %*% t(Is_Pis[[s]])
+			fgpi_adj[[s]] <- (Is_Pis[[s]]) %*% as.matrix(G[[1]]) %*% t(Is_Pis[[s]])
+		}
+	}
+	lam_Graw <- eigen(as.matrix(Graw[[1]][1:(ncol(Graw[[1]])-1),1:(ncol(Graw[[1]])-1)]))$values
+	lam_Gadj <- eigen(as.matrix(G[[1]][1:(ncol(G[[1]])-1),1:(ncol(G[[1]])-1)]))$values
+	Ginfo$residual <- c(Graw=sqrt(sum((Wmat)*(Ysum[[1]]-Reduce("+",Filter(Negate(is.null),fgpi_raw)))^2))/sqrt(sum((Wmat)*Ysum[[1]]^2)),
+			   Gadj=sqrt(sum((Wmat)*(Ysum[[1]]-Reduce("+",Filter(Negate(is.null),fgpi_adj)))^2))/sqrt(sum((Wmat)*Ysum[[1]]^2)))
+	Ginfo$condnum <- c(Graw=abs(max(lam_Graw))/abs(min(lam_Graw)),Gadj=abs(max(lam_Gadj))/abs(min(lam_Gadj)))
+	Ginfo$roc_curve <- roc_curve[[1]]	
+        rm(.W,  Zsum, Ysum,Graw)
         ## ############################################################################        
         ## if control$jackknife, use jackknife samples to estimate variance of G
         ## ############################################################################
@@ -1276,6 +1413,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                tab_patterns           = tab_patterns,
                G                      = G[[1]],
                R                      = R,
+	       Wmat                   = Wmat,              
+	       Ginfo    	      = Ginfo,
                aggregated_growth      = .agg)
     
     if(control$return_d){
