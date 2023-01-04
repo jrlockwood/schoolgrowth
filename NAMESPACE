@@ -3,6 +3,7 @@
 export(schoolgrowth)
 import(doParallel)
 import(foreach)
+import(nloptr)
 importFrom(Matrix,bdiag)
 importFrom(Matrix,forceSymmetric)
 importFrom(Matrix,nearPD)

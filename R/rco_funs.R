@@ -185,32 +185,31 @@ grad.fun <- function(x,z,Wmat,cmat,alpha=0) {
 
 
 
-rco_fun	<- function(optmethod="BFGS",zsum,cmat,Wmat,leeway_factor=1.1,tol=1e-4,tol_curve=1e-4,num_alpha=5,alpha_init=100,alpha_step=0.01) {
+rco_fun	<- function(optmethod="NLOPT_LD_LBFGS",zsum,cmat,Wmat,leeway_factor=1.1,num_alpha=5,alpha_init=100,alpha_step=0.01,tol=1e-6,neval=1000) {
 	n		<- nrow(cmat)-1
 	N		<- n*(n+1)/2
-	x_init		<- diag(n)
-	x_init		<- x_init[lower.tri(x_init,diag=TRUE)]
+	x_init	<- diag(n)
+	x_init	<- x_init[lower.tri(x_init,diag=TRUE)]
 	diag_index	<- which(x_init==1)
 	xd		<- x_init[diag_index]
-	obj.fun		<- llt.fun(x_init,z=zsum,Wmat=Wmat,cmat=cmat,alpha=0)	
-	reg.fun		<- -1*sum(log(xd^2)) + log(sum(x_init^2))
+	obj.fun	<- llt.fun(x_init,z=zsum,Wmat=Wmat,cmat=cmat,alpha=0)	
+	reg.fun	<- -1*sum(log(xd^2)) + log(sum(x_init^2))
 	alpha_init_scaled	<- alpha_init*abs(obj.fun)/abs(reg.fun)
 	alpha_values	<- alpha_init_scaled*alpha_step^c(0:(num_alpha-1))
 
-	x			<- x_init
-	roc			<- vector("list",length=5)
+	x	<- x_init
+	roc	<- vector("list",length=5)
 	for(alph in alpha_values) {
-##		opt		<- optim(par=x,gr=grad.fun,fn=llt.fun,method=optmethod,z=zsum,Wmat=Wmat,cmat=cmat,alpha=alph,control=list(maxit=10000,abstol=tol_curve))
-		opt		<- optim(par=x,gr=grad.fun,fn=llt.fun,method=optmethod,z=zsum,Wmat=Wmat,cmat=cmat,alpha=alph,control=list(maxit=10000))
-		roc[[which(alpha_values==alph)]][[1]]	<- opt$par
-		resid		<- llt.fun(x=opt$par,z=zsum,Wmat=Wmat,cmat=cmat,alpha=0)^.5
+		opt		<- nloptr(x0=x,eval_grad=grad.fun,eval_f=llt.fun,z=zsum,Wmat=Wmat,cmat=cmat,alpha=alph,opts=list("algorithm"=optmethod,xtol_rel=tol,maxeval=neval))
+		roc[[which(alpha_values==alph)]][[1]]	<- opt$solution
+		resid		<- llt.fun(x=opt$solution,z=zsum,Wmat=Wmat,cmat=cmat,alpha=0)^.5
 		l		<- matrix(0,nrow=n,ncol=n)
-		l[lower.tri(l,diag=TRUE)] <- opt$par
+		l[lower.tri(l,diag=TRUE)] <- opt$solution
 		gstar		<- l%*%t(l)
 		lam		<- eigen(gstar)$values
 		condnum 	<- abs(max(lam))/abs(min(lam))
 		roc[[which(alpha_values==alph)]][[2]]	<- c(alph,resid,condnum)
-		x		<- opt$par
+		x		<- opt$solution
 	}
 
 	roc_x			<- lapply(roc,FUN=function(x) x[[1]])
@@ -223,11 +222,7 @@ rco_fun	<- function(optmethod="BFGS",zsum,cmat,Wmat,leeway_factor=1.1,tol=1e-4,t
 		index	<- index[which.min(roc_curve$cond[index])]
 	}
 	alpha	<- roc_curve[index,1]
-##	if(abs(tol-tol_curve) < 1e-3*tol) {
-		outx	<- roc_x[[index]]
-##	} else {
-##		outx	<- optim(par=xx,gr=grad.fun,fn=llt.fun,method=optmethod,z=zsum,Wmat=Wmat,cmat=cmat,alpha=alpha,control=list(maxit=10000,abstol=tol))$par
-##	}
+	outx	<- roc_x[[index]]
 
 	l	<- matrix(0,nrow=n,ncol=n)
 	l[lower.tri(l,diag=TRUE)] <- outx

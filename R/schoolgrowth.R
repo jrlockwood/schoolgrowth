@@ -142,9 +142,9 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 	    stop("Invalid specificaiton of control$parallel")
 	}
 	if(control$Gadj_method=="rco" & is.null(control$Gadj_optmethod)){
-	    control$Gadj_optmethod <- "BFGS"
+	    control$Gadj_optmethod <- "NLOPT_LD_LBFGS"
 	}
-	if((control$parallel=="rco") && (!control$Gadj_optmethod %in% c("Nelder-Mead", "BFGS", "CG", "L-BFGS-B", "SANN","Brent"))){
+	if((control$parallel=="rco") && (substr(control$Gadj_optmethod,1,4)!="NLOPT")){
 	    stop("Invalid specification of control$Gadj_optmethod")
 	}
     }
@@ -1124,8 +1124,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 		result$Gstar  	<- Gstar
 		result$Graw	<- .G
    		result$G	<- G
-		result$error	<- error
-		result$condnum 	<- condnum
+##		result$error	<- error
+##		result$condnum 	<- condnum
 		result$roc_curve 	<- roc_curve
 		return(result)
         }
@@ -1136,8 +1136,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
 	Gstar   	<- sapply(oper, '[', 'Gstar')
 	G		<- sapply(oper, '[', 'G')
 	Ginfo		<- list()
-	Ginfo$residual	<- oper[[1]]$error
-	Ginfo$condnum 	<- oper[[1]]$condnum
+##	Ginfo$residual	<- oper[[1]]$error
+##	Ginfo$condnum 	<- oper[[1]]$condnum
 	Ginfo$roc_curve	<- oper[[1]]$roc_curve
 	error		<- sapply(oper, '[', 'error')
 	condnum		<- sapply(oper, '[', 'condnum')
