@@ -309,7 +309,7 @@ schoolgrowth(d, target = NULL, target_contrast = NULL, control = list())
       }
 
 	\item{Gadj_optmethod: }{
-	Character string. Can take on any optimization method available 	for the "optim" function. Only applicable for Gadj_method equal to 	"rco". Default is "BFGS". 
+	Character string. Can take on any optimization method available 	for the "optim" function. Only applicable for Gadj_method equal to 	"rco". Default is "NLOPT_LD_LBFGS". Any algorithms available for the "nloptr" function can be used.  
 	}
 
 	\item{parallel: }{
