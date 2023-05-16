@@ -198,7 +198,7 @@ rco_fun	<- function(optmethod="NLOPT_LD_LBFGS",zsum,cmat,Wmat,leeway_factor=1.1,
 	alpha_values	<- alpha_init_scaled*alpha_step^c(0:(num_alpha-1))
 
 	x	<- x_init
-	roc	<- vector("list",length=5)
+	roc	<- vector("list",length=num_alpha)
 	for(alph in alpha_values) {
 		opt		<- nloptr(x0=x,eval_grad=grad.fun,eval_f=llt.fun,z=zsum,Wmat=Wmat,cmat=cmat,alpha=alph,opts=list("algorithm"=optmethod,xtol_rel=tol,maxeval=neval))
 		roc[[which(alpha_values==alph)]][[1]]	<- opt$solution
