@@ -46,10 +46,9 @@ llt.fun	<- function(x,z,Wmat,cmat,alpha=0) {
 	xx		<- xx[lower.tri(xx,diag=TRUE)]
 	diag_index	<- which(xx==1)
  	xd		<- x[diag_index]
-      f2		<- -1*sum(log(xd^2)) + log(sum(x^2))
+        f2		<- -1*sum(log(xd^2))/n + log(sum(x^2))
 
 	f1+alpha*f2	
-
 }
 
 ##gradient function 
@@ -177,10 +176,11 @@ grad.fun <- function(x,z,Wmat,cmat,alpha=0) {
 	diag_index	<- which(xx==1)
  	xd		<- x[diag_index]
 	g2		<- rep(0,N)
-      g2[diag_index]	<- g2[diag_index] - (2 * 1 / xd)
-      g2		<- g2 + (2 * x / sum(x^2))
+	g2[diag_index]	<- g2[diag_index] - ((2/n)/ xd)
+	g2		<- g2 + (2 * x / sum(x^2))
 
 	g1+alpha*g2	
+
 }
 
 
