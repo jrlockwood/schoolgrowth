@@ -1004,6 +1004,8 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
     if(G_supplied){
         dblockpairs$G <- G@x
         G             <- list(G)
+	Wmat	      <- NULL
+        Ginfo         <- NULL
     } else {
         if(!control$quietly){
             cat("Estimating G...\n")
@@ -1054,7 +1056,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                   ## PSD adjustment
                   G[[j]]     <- Gadj(Graw[[j]], control$Gadj_method, control$Gadj_eig_tol, control$Gadj_eig_min)
                   rownames(G[[j]]) <- colnames(G[[j]]) <- .blocknames
-	          roc_curve[[j]] 	<- NULL
+	          roc_curve[[j]] 	<- list(NULL)
 		}
                 if(control$Gadj_method=="rco") {
 	          outs	 	<- rco_fun(optmethod=control$Gadj_optmethod,zsum=zsumj,cmat=cmat,Wmat=Wmat) 
@@ -1107,7 +1109,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
               .G         <- new("dspMatrix", Dim=c(B,B), uplo="L", x=.G[lower.tri(.G, diag=TRUE)])
               ## PSD adjustment
               G          <- Gadj(.G, control$Gadj_method, control$Gadj_eig_tol, control$Gadj_eig_min)
-	      roc_curve	 <- NULL
+	      roc_curve	 <- list(NULL)
               rownames(G) <- colnames(G) <- .blocknames
             } 
             if(control$Gadj_method=="rco") {
