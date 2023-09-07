@@ -9,4 +9,5 @@ Author: J.R. Lockwood
 Maintainer: J.R. Lockwood <jr@duolingo.com>
 Description: Provides tools for smoothing school-level growth measures across years, grades and/or subjects using empirical best linear prediction methods.
 License: GPL (>= 2)
+Encoding: UTF-8
 RoxygenNote: 7.2.3

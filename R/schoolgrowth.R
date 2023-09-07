@@ -1415,7 +1415,7 @@ schoolgrowth <- function(d, target = NULL, target_contrast = NULL, control = lis
                tab_patterns           = tab_patterns,
                G                      = G[[1]],
                R                      = R,
-	       Wmat                   = Wmat,              
+	       Wmat                   = Wmat,  
 	       Ginfo    	      = Ginfo,
                aggregated_growth      = .agg)
     
